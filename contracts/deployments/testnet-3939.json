@@ -1,0 +1,30 @@
+{
+  "chainId": 3939,
+  "deployedAt": "2026-03-06",
+  "deployer": "0x99999e454138f6be73E2bE82c890bc5765749999",
+  "contracts": {
+    "HCAFactory": "0xA1F743Ec27FE749A124cDbCB13c9bDa9859A1636",
+    "SimpleRegistryMetadata": "0x3aE3852592B87f82d8871109163ec0dDf8586C2D",
+    "RootRegistry": "0xB1C3a68653105B08c49601A60555CF609f463354",
+    "DOSTLDRegistry": "0x62BE2a74E9f477A4e044ecA917c594fb11D01Bf4",
+    "ReverseRegistry": "0xD03057bA1A9Cd3a21f0944446c0041ACAe818B13",
+    "StandardRentPriceOracle": "0x56cBC9d6E8938EfF8645187ee95d43c593894767",
+    "DOSRegistrar": "0xCC594C20716630574f95E78d39BfceE9F80e3808",
+    "PermissionedResolverImpl": "0xB132A5447077ad10Acd4244F96dFA92A1Cd5d6dE",
+    "UserRegistryImpl": "0x0125578146a98c5Fb32fb5c5F2bf2c48D448CAF1",
+    "UniversalResolverV2": "0xF2A8df282f636ea0a44D117b2c643C477B4f55C3",
+    "ResolverProxy": "0x7b92D81E215650A9671102Dcbb69e25BC1a8aE0e"
+  },
+  "config": {
+    "tld": "dos",
+    "wdos": "0x1111111111111111111111111111111111111111",
+    "pricing": {
+      "1char": "~100 DOS/year",
+      "2char": "~50 DOS/year",
+      "3char+": "~10 DOS/year"
+    },
+    "minCommitmentAge": 60,
+    "maxCommitmentAge": 86400,
+    "minRegistrationDuration": 2419200
+  }
+}

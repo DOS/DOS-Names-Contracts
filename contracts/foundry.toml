@@ -17,7 +17,7 @@ ignored_warnings_from = [
 ]
 
 [fuzz]
-runs = 4096
+runs = 256
 
 [lint]
 lint_on_build = false

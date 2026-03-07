@@ -51,7 +51,6 @@ contract V2Fixture is Test, ERC1155Holder {
             EACBaseRolesLib.ALL_ROLES,
             type(uint64).max
         );
-        ethRegistry.setParent(rootRegistry, "eth");
         batchGatewayProvider = new GatewayProvider(address(this), new string[](0));
         universalResolver = new UniversalResolverV2(rootRegistry, batchGatewayProvider);
     }

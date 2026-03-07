@@ -8,13 +8,13 @@ import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
 
 import {AbstractMirrorResolver} from "./AbstractMirrorResolver.sol";
 
-/// @notice Resolver that performs resolutions using ENSv2.
-contract ENSV2Resolver is AbstractMirrorResolver {
+/// @notice Resolver that performs resolutions using the DOS Name Service (ENSv2-based).
+contract DOSResolver is AbstractMirrorResolver {
     ////////////////////////////////////////////////////////////////////////
     // Constants
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev The ENS v2 root registry used to traverse the registry hierarchy and locate resolvers.
+    /// @dev The root registry used to traverse the registry hierarchy and locate resolvers.
     IRegistry public immutable ROOT_REGISTRY;
 
     ////////////////////////////////////////////////////////////////////////

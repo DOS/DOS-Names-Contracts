@@ -83,7 +83,7 @@ contract PermissionedRegistry is
     // Storage
     ////////////////////////////////////////////////////////////////////////
 
-    IRegistry internal _parentRegistry;
+    IRegistry internal _parent;
     string internal _childLabel;
     mapping(uint256 storageId => Entry entry) internal _entries;
 
@@ -148,7 +148,7 @@ contract PermissionedRegistry is
         IRegistry parent,
         string memory label
     ) public virtual onlyRootRoles(RegistryRolesLib.ROLE_SET_PARENT) {
-        _parentRegistry = parent;
+        _parent = parent;
         _childLabel = label;
         emit ParentUpdated(parent, label, _msgSender());
     }
@@ -285,7 +285,7 @@ contract PermissionedRegistry is
 
     /// @inheritdoc IRegistry
     function getParent() public view virtual returns (IRegistry parent, string memory label) {
-        return (_parentRegistry, _childLabel);
+        return (_parent, _childLabel);
     }
 
     /// @inheritdoc ERC1155Singleton

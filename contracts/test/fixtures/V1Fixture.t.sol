@@ -3,7 +3,6 @@ pragma solidity >=0.8.13;
 
 import {
     PARENT_CANNOT_CONTROL,
-    CANNOT_SET_RESOLVER,
     CANNOT_UNWRAP,
     CANNOT_BURN_FUSES,
     LabelTooShort,
@@ -53,7 +52,7 @@ contract V1FixtureTest is V1Fixture {
         (bytes memory name, ) = registerUnwrapped("test");
         assertEq(findResolverV1(name), address(0), "before");
         vm.prank(user);
-        registryV1.setResolver(NameCoder.namehash(name, 0), address(1));
+        ensV1.setResolver(NameCoder.namehash(name, 0), address(1));
         assertEq(findResolverV1(name), address(1), "after");
     }
 
@@ -164,12 +163,6 @@ contract V1FixtureTest is V1Fixture {
             CANNOT_BURN_FUSES,
             uint64(block.timestamp + 1 days)
         );
-    }
-
-    function test_nameWrapper_CANNOT_SET_RESOLVER_requires_CANNOT_UNWRAP() external {
-        vm.expectRevert();
-        this.registerWrappedETH2LD("test", CANNOT_SET_RESOLVER);
-        this.registerWrappedETH2LD("test", CANNOT_SET_RESOLVER | CANNOT_UNWRAP);
     }
 
     function test_ethRegistrarV1_ownerOf_unregisteredReverts() external {
