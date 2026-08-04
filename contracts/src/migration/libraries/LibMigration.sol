@@ -1,8 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
+import {
+    CANNOT_BURN_FUSES,
+    CANNOT_UNWRAP,
+    IS_DOT_ETH,
+    PARENT_CANNOT_CONTROL
+} from "@ens/contracts/wrapper/INameWrapper.sol";
+
 import {IRegistry} from "../../registry/interfaces/IRegistry.sol";
 
+/// @dev Primitives for migration.
 library LibMigration {
     ////////////////////////////////////////////////////////////////////////
     // Types
@@ -20,9 +28,6 @@ library LibMigration {
         /// @dev Resolver address to set for the migrated name.
         ///      Ignored if locked and `CANNOT_SET_RESOLVER`.
         address resolver;
-        /// @dev CREATE2 salt for deterministic WrapperRegistry deployment.
-        ///      Ignored by unlocked migration..
-        uint256 salt;
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -30,7 +35,7 @@ library LibMigration {
     ////////////////////////////////////////////////////////////////////////
 
     /// @dev Minimum size of `abi.encode(Data({...}))`.
-    uint256 internal constant MIN_DATA_SIZE = 8 * 32;
+    uint256 internal constant MIN_DATA_SIZE = 7 * 32;
 
     ////////////////////////////////////////////////////////////////////////
     // Errors
@@ -52,7 +57,34 @@ library LibMigration {
     /// @dev Error selector: `0xedec3569`
     error NameDataMismatch(uint256 tokenId);
 
+    /// @notice NameWrapper token has existing approval and burned `CANNOT_APPROVE`.
+    /// @dev Error selector: `0xa4f07713`
+    error FrozenTokenApproval(uint256 tokenId);
+
     /// @notice The encoded data is invalid.
     /// @dev Error selector: `0x5cb045db`
     error InvalidData();
+
+    ////////////////////////////////////////////////////////////////////////
+    // Implementation
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Returns `true` if the NameWrapper token is locked.
+    function isLocked(uint32 fuses) internal pure returns (bool) {
+        // PARENT_CANNOT_CONTROL is required to set CANNOT_UNWRAP, so CANNOT_UNWRAP is sufficient
+        // see: V1Fixture.t.sol: `test_nameWrapper_CANNOT_UNWRAP_requires_PARENT_CANNOT_CONTROL()`
+        return (fuses & CANNOT_UNWRAP) != 0;
+    }
+
+    /// @dev Returns `true` if the NameWrapper token fuses are not frozen.
+    function notFrozen(uint32 fuses) internal pure returns (bool) {
+        return (fuses & CANNOT_BURN_FUSES) == 0;
+    }
+
+    /// @dev Returns `true` if the NameWrapper token is emancipated and not 2LD .eth.
+    function isEmancipatedChild(uint32 fuses) internal pure returns (bool) {
+        // PARENT_CANNOT_CONTROL must be set for the entire ancestory.
+        // see: V1Fixture.t.sol: `test_nameWrapper_PARENT_CANNOT_CONTROL_withoutParent()`
+        return (fuses & (IS_DOT_ETH | PARENT_CANNOT_CONTROL)) == PARENT_CANNOT_CONTROL;
+    }
 }

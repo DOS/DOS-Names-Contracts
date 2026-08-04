@@ -1,160 +1,243 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-import "forge-std/Script.sol";
+import {Script} from "forge-std/Script.sol";
 
+import {GatewayProvider} from "@ens/contracts/ccipRead/GatewayProvider.sol";
+import {HexUtils} from "@ens/contracts/utils/HexUtils.sol";
+import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 
-import {IHCAFactoryBasic} from "~src/hca/interfaces/IHCAFactoryBasic.sol";
-import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
-import {IRegistryMetadata} from "~src/registry/interfaces/IRegistryMetadata.sol";
-import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
-
-import {MockHCAFactoryBasic} from "~test/mocks/MockHCAFactoryBasic.sol";
-import {SimpleRegistryMetadata} from "~src/registry/SimpleRegistryMetadata.sol";
-import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
-import {UserRegistry} from "~src/registry/UserRegistry.sol";
-
-import {StandardRentPriceOracle, DiscountPoint, PaymentRatio} from "~src/registrar/StandardRentPriceOracle.sol";
 import {DOSRegistrar} from "~src/registrar/DOSRegistrar.sol";
-import {IRentPriceOracle} from "~src/registrar/interfaces/IRentPriceOracle.sol";
-
-import {PermissionedResolver} from "~src/resolver/PermissionedResolver.sol";
-import {UniversalResolverV2} from "~src/universalResolver/UniversalResolverV2.sol";
-import {IGatewayProvider} from "@ens/contracts/universalResolver/AbstractUniversalResolver.sol";
-
-import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
+import {
+    DiscountPoint,
+    PaymentRatio,
+    StandardRentPriceOracle
+} from "~src/registrar/StandardRentPriceOracle.sol";
+import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
+import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
+import {L2ReverseRegistrar} from "~src/reverse-registrar/L2ReverseRegistrar.sol";
+import {PermissionedResolver} from "~src/resolver/PermissionedResolver.sol";
+import {UserRegistry} from "~src/registry/UserRegistry.sol";
+import {ContractNamer} from "~src/utils/ContractNamer.sol";
+import {LabelStore} from "~src/utils/LabelStore.sol";
+import {UniversalResolverV2} from "~src/universalResolver/UniversalResolverV2.sol";
 
-contract DeployDOS is Script {
-    /// @dev WDOS (Wrapped Native Token) on DOS Chain
-    address constant WDOS = 0x1111111111111111111111111111111111111111;
+/// @title Deploy DOS Name Service
+/// @notice Deploys a greenfield ENSv2 stack configured for the `.dos` namespace.
+contract DeployDOS is Script, ERC1155Holder {
+    address internal constant DEFAULT_WDOS = 0x1111111111111111111111111111111111111111;
+    uint64 internal constant MAX_EXPIRY = type(uint64).max;
+    uint64 internal constant GRACE_PERIOD = 28 days;
+    uint64 internal constant MIN_COMMITMENT_AGE = 60;
+    uint64 internal constant MAX_COMMITMENT_AGE = 1 days;
+    uint64 internal constant MIN_REGISTER_DURATION = 28 days;
+    uint256 internal constant PRICE_SCALE = 1e12;
+    uint256 internal constant SEC_PER_YEAR = 365 days;
 
-    /// @dev Maximum expiry
-    uint64 constant MAX_EXPIRY = type(uint64).max;
+    /// @notice Payment token decimals cannot represent the oracle price scale.
+    /// @param decimals Token decimals reported by the ERC20 contract.
+    error PaymentTokenDecimalsTooLow(uint8 decimals);
 
-    // ---- Stored between phases so we stay under the stack limit ----
-    IHCAFactoryBasic internal _hcaFactory;
-    IRegistryMetadata internal _metadata;
-    PermissionedRegistry internal _root;
-    PermissionedRegistry internal _dosTLD;
-    PermissionedRegistry internal _reverseReg;
+    /// @notice Payment token decimals exceed the oracle ratio capacity.
+    /// @param decimals Token decimals reported by the ERC20 contract.
+    error PaymentTokenDecimalsTooHigh(uint8 decimals);
 
-    function run() external {
-        uint256 deployerPk = vm.envUint("PRIVATE_KEY");
-        address deployer = vm.addr(deployerPk);
+    /// @notice Contracts produced by the DOS deployment profile.
+    struct Deployment {
+        ContractNamer contractNamer;
+        VerifiableFactory verifiableFactory;
+        LabelStore labelStore;
+        PermissionedRegistry rootRegistry;
+        PermissionedRegistry dosRegistry;
+        PermissionedRegistry reverseRegistry;
+        StandardRentPriceOracle priceOracle;
+        DOSRegistrar dosRegistrar;
+        PermissionedResolver permissionedResolverImplementation;
+        UserRegistry userRegistryImplementation;
+        GatewayProvider gatewayProvider;
+        UniversalResolverV2 universalResolver;
+        L2ReverseRegistrar reverseRegistrar;
+    }
 
-        vm.startBroadcast(deployerPk);
+    /// @notice Broadcasts a DOS Name Service deployment using environment configuration.
+    /// @dev Required env: `PRIVATE_KEY`. Optional env: `BENEFICIARY`, `PAYMENT_TOKEN`.
+    /// @return deployment The deployed contract set.
+    function run() external returns (Deployment memory deployment) {
+        uint256 privateKey = vm.envUint("PRIVATE_KEY");
+        address deployer = vm.addr(privateKey);
+        address beneficiary = vm.envOr("BENEFICIARY", deployer);
+        address paymentToken = vm.envOr("PAYMENT_TOKEN", DEFAULT_WDOS);
 
-        _deployCore(deployer);
-        _deployRegistrar(deployer);
-        _deployImplementations();
-
+        vm.startBroadcast(privateKey);
+        deployment = deploy(deployer, beneficiary, IERC20(paymentToken), block.chainid);
         vm.stopBroadcast();
-
-        console.log("--- Deployment Complete ---");
-        console.log("Deployer:", deployer);
     }
 
-    /// @dev Phase 1: HCAFactory, Metadata, Root, DOS TLD, Reverse registries + TLD registrations.
-    function _deployCore(address deployer) internal {
-        // 1. HCAFactory (mock for testnet)
-        MockHCAFactoryBasic hcaFactory = new MockHCAFactoryBasic();
-        _hcaFactory = IHCAFactoryBasic(address(hcaFactory));
-        console.log("HCAFactory:", address(hcaFactory));
-
-        // 2. SimpleRegistryMetadata
-        SimpleRegistryMetadata metadata = new SimpleRegistryMetadata(_hcaFactory);
-        _metadata = IRegistryMetadata(address(metadata));
-        console.log("SimpleRegistryMetadata:", address(metadata));
-
-        // 3. RootRegistry
-        PermissionedRegistry root = new PermissionedRegistry(
-            _hcaFactory, _metadata, deployer, EACBaseRolesLib.ALL_ROLES
+    /// @notice Deploys and wires the complete `.dos` contract set.
+    /// @param owner Account that controls registry, registrar and pricing administration.
+    /// @param beneficiary Account that receives registration and renewal payments.
+    /// @param paymentToken ERC20 token accepted by the fixed-price oracle.
+    /// @param chainId DOS Chain ID used to derive the ENSIP-19 reverse namespace.
+    /// @return deployment The deployed contract set.
+    function deploy(address owner, address beneficiary, IERC20 paymentToken, uint256 chainId)
+        public
+        returns (Deployment memory deployment)
+    {
+        ContractNamer namerImplementation = new ContractNamer();
+        deployment.contractNamer = ContractNamer(
+            address(
+                new ERC1967Proxy(
+                    address(namerImplementation),
+                    abi.encodeCall(ContractNamer.initialize, (owner))
+                )
+            )
         );
-        _root = root;
-        console.log("RootRegistry:", address(root));
+        deployment.verifiableFactory = new VerifiableFactory();
+        deployment.labelStore = new LabelStore(deployment.contractNamer);
 
-        // 4. DOSTLDRegistry
-        PermissionedRegistry dosTLD = new PermissionedRegistry(
-            _hcaFactory, _metadata, deployer, EACBaseRolesLib.ALL_ROLES
+        deployment.rootRegistry = new PermissionedRegistry(
+            deployment.labelStore,
+            owner,
+            _rootRegistryRoles()
         );
-        _dosTLD = dosTLD;
-        console.log("DOSTLDRegistry:", address(dosTLD));
-
-        // Register "dos" TLD in root
-        root.register("dos", deployer, IRegistry(address(dosTLD)), address(0), 0, MAX_EXPIRY);
-
-        // 5. ReverseRegistry
-        PermissionedRegistry reverseReg = new PermissionedRegistry(
-            _hcaFactory, _metadata, deployer, EACBaseRolesLib.ALL_ROLES
+        deployment.dosRegistry = new PermissionedRegistry(
+            deployment.labelStore,
+            owner,
+            _dosRegistryRoles()
         );
-        _reverseReg = reverseReg;
-        console.log("ReverseRegistry:", address(reverseReg));
-
-        // Register "reverse" in root
-        root.register("reverse", deployer, IRegistry(address(reverseReg)), address(0), 0, MAX_EXPIRY);
-    }
-
-    /// @dev Phase 2: PriceOracle + DOSRegistrar + role grants.
-    function _deployRegistrar(address deployer) internal {
-        // 6. StandardRentPriceOracle
-        uint256[] memory baseRatePerCp = new uint256[](3);
-        baseRatePerCp[0] = 3_170_979_198; // 1-char: ~100 DOS/year
-        baseRatePerCp[1] = 1_585_489_599; // 2-char: ~50 DOS/year
-        baseRatePerCp[2] = 317_097_919;   // 3+ char: ~10 DOS/year
-
-        DiscountPoint[] memory discountPoints = new DiscountPoint[](0);
-
-        PaymentRatio[] memory paymentRatios = new PaymentRatio[](1);
-        paymentRatios[0] = PaymentRatio({token: IERC20(WDOS), numer: 1, denom: 1});
-
-        StandardRentPriceOracle priceOracle = new StandardRentPriceOracle(
-            deployer,
-            IPermissionedRegistry(address(_dosTLD)),
-            baseRatePerCp,
-            discountPoints,
-            0,  // premiumPriceInitial
-            0,  // premiumHalvingPeriod
-            0,  // premiumPeriod
-            paymentRatios
+        deployment.reverseRegistry = new PermissionedRegistry(
+            deployment.labelStore,
+            owner,
+            _rootRegistryRoles()
         );
-        console.log("StandardRentPriceOracle:", address(priceOracle));
 
-        // 7. DOSRegistrar
-        DOSRegistrar registrar = new DOSRegistrar(
-            IPermissionedRegistry(address(_dosTLD)),
-            _hcaFactory,
-            deployer,   // beneficiary
-            60,          // minCommitmentAge (seconds)
-            86400,       // maxCommitmentAge (1 day)
-            2419200,     // minRegisterDuration (28 days)
-            IRentPriceOracle(address(priceOracle))
+        deployment.rootRegistry.register(
+            "dos",
+            owner,
+            deployment.dosRegistry,
+            address(0),
+            _tldTokenRoles(),
+            MAX_EXPIRY
         );
-        console.log("DOSRegistrar:", address(registrar));
+        deployment.dosRegistry.setParent(deployment.rootRegistry, "dos");
 
-        // Grant ROLE_REGISTRAR | ROLE_RENEW to DOSRegistrar on dosTLD
-        _dosTLD.grantRootRoles(
+        deployment.rootRegistry.register(
+            "reverse",
+            owner,
+            deployment.reverseRegistry,
+            address(0),
+            _tldTokenRoles(),
+            MAX_EXPIRY
+        );
+        deployment.reverseRegistry.setParent(deployment.rootRegistry, "reverse");
+
+        deployment.priceOracle = _deployPriceOracle(owner, paymentToken);
+        deployment.dosRegistrar = new DOSRegistrar(
+            owner,
+            deployment.dosRegistry,
+            beneficiary,
+            deployment.priceOracle,
+            GRACE_PERIOD,
+            MIN_COMMITMENT_AGE,
+            MAX_COMMITMENT_AGE,
+            MIN_REGISTER_DURATION
+        );
+        deployment.dosRegistry.grantRootRoles(
             RegistryRolesLib.ROLE_REGISTRAR | RegistryRolesLib.ROLE_RENEW,
-            address(registrar)
+            address(deployment.dosRegistrar)
+        );
+
+        deployment.permissionedResolverImplementation = new PermissionedResolver(owner);
+        deployment.userRegistryImplementation = new UserRegistry(deployment.labelStore, owner);
+
+        string[] memory gateways = new string[](0);
+        deployment.gatewayProvider = new GatewayProvider(owner, gateways);
+        deployment.universalResolver = new UniversalResolverV2(
+            deployment.rootRegistry,
+            deployment.gatewayProvider,
+            deployment.contractNamer
+        );
+
+        uint256 coinType = (1 << 31) | chainId;
+        string memory reverseLabel = HexUtils.unpaddedUintToHex(coinType, true);
+        deployment.reverseRegistrar = new L2ReverseRegistrar(chainId, reverseLabel);
+        deployment.reverseRegistry.register(
+            reverseLabel,
+            owner,
+            IRegistry(address(0)),
+            address(deployment.reverseRegistrar),
+            0,
+            MAX_EXPIRY
         );
     }
 
-    /// @dev Phase 3: Implementation contracts (UUPS) + UniversalResolver.
-    function _deployImplementations() internal {
-        // 8. PermissionedResolver implementation
-        PermissionedResolver resolverImpl = new PermissionedResolver(_hcaFactory);
-        console.log("PermissionedResolver (impl):", address(resolverImpl));
+    function _deployPriceOracle(address owner, IERC20 paymentToken)
+        internal
+        returns (StandardRentPriceOracle oracle)
+    {
+        uint256[] memory baseRates = new uint256[](3);
+        baseRates[0] = _yearlyRate(100);
+        baseRates[1] = _yearlyRate(50);
+        baseRates[2] = _yearlyRate(10);
 
-        // 9. UserRegistry implementation
-        UserRegistry userRegistryImpl = new UserRegistry(_hcaFactory, _metadata);
-        console.log("UserRegistry (impl):", address(userRegistryImpl));
+        DiscountPoint[] memory discounts = new DiscountPoint[](0);
+        PaymentRatio[] memory paymentRatios = new PaymentRatio[](1);
+        uint8 decimals = IERC20Metadata(address(paymentToken)).decimals();
+        if (decimals < 12) {
+            revert PaymentTokenDecimalsTooLow(decimals);
+        }
+        if (decimals > 50) {
+            revert PaymentTokenDecimalsTooHigh(decimals);
+        }
+        uint256 scale = 10 ** (decimals - 12);
+        paymentRatios[0] = PaymentRatio({paymentToken: paymentToken, numer: uint128(scale), denom: 1});
 
-        // 10. UniversalResolverV2
-        UniversalResolverV2 universalResolver = new UniversalResolverV2(
-            IRegistry(address(_root)),
-            IGatewayProvider(address(0)) // no batch gateway for testnet
-        );
-        console.log("UniversalResolverV2:", address(universalResolver));
+        oracle = new StandardRentPriceOracle(owner, baseRates, discounts, 0, 0, 0, 0, paymentRatios);
+    }
+
+    function _yearlyRate(uint256 yearlyPrice) internal pure returns (uint256) {
+        return (PRICE_SCALE * yearlyPrice + SEC_PER_YEAR - 1) / SEC_PER_YEAR;
+    }
+
+    function _rootRegistryRoles() internal pure returns (uint256) {
+        return
+            RegistryRolesLib.ROLE_REGISTRAR |
+            RegistryRolesLib.ROLE_REGISTRAR_ADMIN |
+            RegistryRolesLib.ROLE_REGISTER_RESERVED |
+            RegistryRolesLib.ROLE_REGISTER_RESERVED_ADMIN |
+            RegistryRolesLib.ROLE_SET_PARENT |
+            RegistryRolesLib.ROLE_SET_PARENT_ADMIN |
+            RegistryRolesLib.ROLE_RENEW |
+            RegistryRolesLib.ROLE_RENEW_ADMIN |
+            RegistryRolesLib.ROLE_CAN_NAME |
+            RegistryRolesLib.ROLE_CAN_NAME_ADMIN |
+            RegistryRolesLib.ROLE_SET_URI |
+            RegistryRolesLib.ROLE_SET_URI_ADMIN;
+    }
+
+    function _dosRegistryRoles() internal pure returns (uint256) {
+        return
+            RegistryRolesLib.ROLE_REGISTRAR_ADMIN |
+            RegistryRolesLib.ROLE_REGISTER_RESERVED_ADMIN |
+            RegistryRolesLib.ROLE_SET_PARENT |
+            RegistryRolesLib.ROLE_SET_PARENT_ADMIN |
+            RegistryRolesLib.ROLE_RENEW_ADMIN |
+            RegistryRolesLib.ROLE_CAN_NAME |
+            RegistryRolesLib.ROLE_CAN_NAME_ADMIN |
+            RegistryRolesLib.ROLE_SET_URI |
+            RegistryRolesLib.ROLE_SET_URI_ADMIN;
+    }
+
+    function _tldTokenRoles() internal pure returns (uint256) {
+        return
+            RegistryRolesLib.ROLE_SET_SUBREGISTRY |
+            RegistryRolesLib.ROLE_SET_SUBREGISTRY_ADMIN |
+            RegistryRolesLib.ROLE_SET_RESOLVER |
+            RegistryRolesLib.ROLE_SET_RESOLVER_ADMIN;
     }
 }

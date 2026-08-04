@@ -9,32 +9,40 @@ import {ResolverCaller} from "@ens/contracts/universalResolver/ResolverCaller.so
 import {BytesUtils} from "@ens/contracts/utils/BytesUtils.sol";
 import {IERC7996} from "@ens/contracts/utils/IERC7996.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
-import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
+import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {ResolverProfileRewriterLib} from "../resolver/libraries/ResolverProfileRewriterLib.sol";
-import {LibRegistry, IRegistry} from "../universalResolver/libraries/LibRegistry.sol";
+import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
+import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
+import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
 /// @notice Gasless DNSSEC resolver that rewrites DNS names according to an alias rule encoded in
-///         a TXT record's context field. Supports two modes:
+/// a TXT record's context field. Supports two modes:
 ///
-///         - Rewrite: context is `<oldSuffix> <newSuffix>` — replaces the matching suffix
-///           (e.g., `*.nick.com` + context `com base.eth` → `*.nick.base.eth`).
-///         - Replace: context is `<newName>` (no space) — replaces the entire name.
+/// - Rewrite: context is `<oldSuffix> <newSuffix>` — replaces the matching suffix
+///   (e.g., `*.nick.com` + context `com base.eth` → `*.nick.base.eth`).
+/// - Replace: context is `<newName>` (no space) — replaces the entire name.
 ///
-///         After rewriting, resolves the new name through the v2 registry via
-///         `LibRegistry.findResolver()`, rewriting the node in the calldata via
-///         `ResolverProfileRewriterLib`.
+/// After rewriting, resolves the new name through the v2 registry via
+/// `LibRegistry.findResolver()`, rewriting the node in the calldata via
+/// `ResolverProfileRewriterLib`.
 ///
-///         Only invoked indirectly by `DNSTLDResolver` when processing an `ENS1` TXT record.
-contract DNSAliasResolver is ERC165, ResolverCaller, IERC7996, IExtendedDNSResolver {
+/// Only invoked indirectly by `DNSTLDResolver` when processing an `ENS1` TXT record.
+///
+contract DNSAliasResolver is
+    DelegatedContractNamer,
+    ResolverCaller,
+    IERC7996,
+    IExtendedDNSResolver
+{
     ////////////////////////////////////////////////////////////////////////
-    // Constants
+    // Immutables
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev The ENSv2 root registry used to look up resolvers for rewritten names.
-    IRegistry public immutable ROOT_REGISTRY;
+    /// @notice The ENSv2 root registry used to look up resolvers for rewritten names.
+    IPermissionedRegistry public immutable ROOT_REGISTRY;
 
-    /// @dev Provider for batch CCIP-Read gateway URLs, used when forwarding resolution calls.
+    /// @notice Provider for batch CCIP-Read gateway URLs, used when forwarding resolution calls.
     IGatewayProvider public immutable BATCH_GATEWAY_PROVIDER;
 
     ////////////////////////////////////////////////////////////////////////
@@ -52,18 +60,23 @@ contract DNSAliasResolver is ERC165, ResolverCaller, IERC7996, IExtendedDNSResol
     // Initialization
     ////////////////////////////////////////////////////////////////////////
 
+    /// @param rootRegistry The ENSv2 root registry.
+    /// @param batchGatewayProvider The batch gateway provider.
+    /// @param contractNamer Delegated contract namer.
     constructor(
-        IRegistry rootRegistry,
-        IGatewayProvider batchGatewayProvider
-    ) CCIPReader(DEFAULT_UNSAFE_CALL_GAS) {
+        IPermissionedRegistry rootRegistry,
+        IGatewayProvider batchGatewayProvider,
+        IContractNamer contractNamer
+    )
+        CCIPReader(DEFAULT_UNSAFE_CALL_GAS)
+        DelegatedContractNamer(contractNamer)
+    {
         ROOT_REGISTRY = rootRegistry;
         BATCH_GATEWAY_PROVIDER = batchGatewayProvider;
     }
 
-    /// @inheritdoc ERC165
-    function supportsInterface(
-        bytes4 interfaceId
-    ) public view virtual override(ERC165) returns (bool) {
+    /// @inheritdoc DelegatedContractNamer
+    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
         return
             type(IExtendedDNSResolver).interfaceId == interfaceId ||
             type(IERC7996).interfaceId == interfaceId ||
@@ -79,16 +92,18 @@ contract DNSAliasResolver is ERC165, ResolverCaller, IERC7996, IExtendedDNSResol
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Apply rewrite rule to name and resolve it instead.
-    ///
-    /// The operating assumption is that this contract is never called directly,
-    /// and instead only invoked by DNSTLDResolver in response to an TXT record.
-    ///
-    function resolve(
-        bytes calldata name,
-        bytes calldata data,
-        bytes calldata context
-    ) external view returns (bytes memory) {
+    /// @notice Apply rewrite rule to name and resolve it instead.
+    /// @dev The operating assumption is that this contract is never called directly,
+    ///      and instead only invoked by DNSTLDResolver in response to an TXT record.
+    /// @param name The DNS-encoded name.
+    /// @param data The data to resolve.
+    /// @param context The TXT record context.
+    /// @return The abi-encoded result from the resolver.
+    function resolve(bytes calldata name, bytes calldata data, bytes calldata context)
+        external
+        view
+        returns (bytes memory)
+    {
         bytes memory newName = rewriteNameWithContext(name, context);
         (, address resolver, bytes32 node, ) = LibRegistry.findResolver(ROOT_REGISTRY, newName, 0);
         callResolver(
@@ -101,31 +116,23 @@ contract DNSAliasResolver is ERC165, ResolverCaller, IERC7996, IExtendedDNSResol
         );
     }
 
-    ////////////////////////////////////////////////////////////////////////
-    // Internal Functions
-    ////////////////////////////////////////////////////////////////////////
-
-    /// @dev Applies the rewrite rule encoded in `context` to `name`. If `context` contains a
-    ///      space, it is split into an old suffix and a new suffix; the old suffix is matched
-    ///      against `name` and replaced with the new suffix. If there is no space, the entire
-    ///      `name` is replaced with the DNS-encoding of `context`.
-    ///
+    /// @notice Applies the rewrite rule encoded in `context` to `name`.
+    /// @dev If `context` contains a space, it is split into an old suffix and a new suffix;
+    ///      the old suffix is matched against `name` and replaced with the new suffix. If there
+    ///      is no space, the entire `name` is replaced with the DNS-encoding of `context`.
     /// @param name The DNS-encoded name to rewrite.
     /// @param context The rewrite rule — either `<oldSuffix> <newSuffix>` or `<newName>`.
-    ///
     /// @return The rewritten DNS-encoded name.
-    function rewriteNameWithContext(
-        bytes calldata name,
-        bytes calldata context
-    ) public pure returns (bytes memory) {
+    function rewriteNameWithContext(bytes calldata name, bytes calldata context)
+        public
+        pure
+        returns (bytes memory)
+    {
         uint256 sep = BytesUtils.find(context, 0, context.length, " ");
         if (sep < context.length) {
             bytes memory oldSuffix = NameCoder.encode(string(context[:sep]));
-            (bool matched, , , uint256 offset) = NameCoder.matchSuffix(
-                name,
-                0,
-                NameCoder.namehash(oldSuffix, 0)
-            );
+            (bool matched, , , uint256 offset) =
+                NameCoder.matchSuffix(name, 0, NameCoder.namehash(oldSuffix, 0));
             if (!matched) {
                 revert NoSuffixMatch(name, oldSuffix);
             }

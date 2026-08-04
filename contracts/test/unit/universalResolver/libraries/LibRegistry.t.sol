@@ -7,52 +7,24 @@ import {Test} from "forge-std/Test.sol";
 
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
+import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 
 import {EACBaseRolesLib} from "~src/access-control/EnhancedAccessControl.sol";
-import {IHCAFactoryBasic} from "~src/hca/interfaces/IHCAFactoryBasic.sol";
-import {
-    PermissionedRegistry,
-    IStandardRegistry,
-    IRegistry,
-    IRegistryMetadata
-} from "~src/registry/PermissionedRegistry.sol";
-import {LibRegistry, NameCoder} from "~src/universalResolver/libraries/LibRegistry.sol";
+import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
+import {IStandardRegistry} from "~src/registry/interfaces/IStandardRegistry.sol";
+import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
+import {LibRegistry} from "~src/universalResolver/libraries/LibRegistry.sol";
+import {LabelStore} from "~src/utils/LabelStore.sol";
+import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
 
 contract LibRegistryTest is Test, ERC1155Holder {
     PermissionedRegistry rootRegistry;
+    LabelStore labelStore;
+
     address resolverAddress = makeAddr("resolver");
 
-    function _createRegistry() internal returns (PermissionedRegistry) {
-        return
-            new PermissionedRegistry(
-                IHCAFactoryBasic(address(0)),
-                IRegistryMetadata(address(0)),
-                address(this),
-                EACBaseRolesLib.ALL_ROLES
-            );
-    }
-    function _register(
-        PermissionedRegistry parentRegistry,
-        string memory label,
-        IRegistry registry,
-        address resolver
-    ) internal {
-        parentRegistry.register(
-            label,
-            address(this),
-            registry,
-            resolver,
-            EACBaseRolesLib.ALL_ROLES,
-            uint64(block.timestamp + 1000)
-        );
-        if (
-            ERC165Checker.supportsInterface(address(registry), type(IStandardRegistry).interfaceId)
-        ) {
-            IStandardRegistry(address(registry)).setParent(parentRegistry, label);
-        }
-    }
-
     function setUp() external {
+        labelStore = new LabelStore(IContractNamer(address(0)));
         rootRegistry = _createRegistry();
     }
 
@@ -62,9 +34,12 @@ contract LibRegistryTest is Test, ERC1155Holder {
         address parentRegistry,
         IRegistry[] memory registries,
         bytes memory canonicalName
-    ) internal view {
-        (IRegistry registry, address resolver, bytes32 node, uint256 resolverOffset_) = LibRegistry
-            .findResolver(rootRegistry, name, 0);
+    )
+        internal
+        view
+    {
+        (IRegistry registry, address resolver, bytes32 node, uint256 resolverOffset_) =
+            LibRegistry.findResolver(rootRegistry, name, 0);
         assertEq(
             address(LibRegistry.findExactRegistry(rootRegistry, name, 0)),
             address(registry),
@@ -99,15 +74,6 @@ contract LibRegistryTest is Test, ERC1155Holder {
             (, offset) = NameCoder.nextLabel(name, offset);
         }
         assertEq(offset, name.length, "length");
-        (IRegistry registryFrom, address resolverFrom) = LibRegistry.findResolverFromParent(
-            name,
-            0,
-            name.length - 1,
-            rootRegistry,
-            address(0)
-        );
-        assertEq(address(registryFrom), address(registry), "registryFrom");
-        assertEq(resolverFrom, resolver, "resolverFrom");
         assertEq(
             LibRegistry.findCanonicalName(rootRegistry, registries[0]),
             canonicalName,
@@ -276,11 +242,7 @@ contract LibRegistryTest is Test, ERC1155Holder {
         _register(rootRegistry, "eth", ethRegistry, address(0));
         _register(ethRegistry, "test", testRegistry, address(0));
         ethRegistry.setParent(IRegistry(address(0)), "eth"); // wrong
-        assertEq(
-            LibRegistry.findCanonicalName(rootRegistry, testRegistry),
-            "",
-            "findCanonicalName"
-        );
+        assertEq(LibRegistry.findCanonicalName(rootRegistry, testRegistry), "", "findCanonicalName");
         assertEq(
             address(LibRegistry.findCanonicalRegistry(rootRegistry, NameCoder.encode("test.eth"))),
             address(0),
@@ -294,11 +256,21 @@ contract LibRegistryTest is Test, ERC1155Holder {
         _register(rootRegistry, "eth", ethRegistry, address(0));
         _register(ethRegistry, "test", testRegistry, address(0));
         ethRegistry.setParent(IRegistry(address(0)), "xyz"); // wrong
+        assertEq(LibRegistry.findCanonicalName(rootRegistry, testRegistry), "", "findCanonicalName");
         assertEq(
-            LibRegistry.findCanonicalName(rootRegistry, testRegistry),
-            "",
-            "findCanonicalName"
+            address(LibRegistry.findCanonicalRegistry(rootRegistry, NameCoder.encode("test.eth"))),
+            address(0),
+            "findCanonicalRegistry"
         );
+    }
+
+    function test_findCanonical_wrongChild() external {
+        PermissionedRegistry ethRegistry = _createRegistry();
+        PermissionedRegistry testRegistry = _createRegistry();
+        _register(rootRegistry, "eth", ethRegistry, address(0));
+        uint256 tokenId = _register(ethRegistry, "test", testRegistry, address(0));
+        ethRegistry.setSubregistry(tokenId, IRegistry(address(0))); // wrong
+        assertEq(LibRegistry.findCanonicalName(rootRegistry, testRegistry), "", "findCanonicalName");
         assertEq(
             address(LibRegistry.findCanonicalRegistry(rootRegistry, NameCoder.encode("test.eth"))),
             address(0),
@@ -342,5 +314,46 @@ contract LibRegistryTest is Test, ERC1155Holder {
             address(0),
             "xyz:test.eth"
         );
+    }
+
+    function test_findOwner() external {
+        PermissionedRegistry ethRegistry = _createRegistry();
+        PermissionedRegistry testRegistry = _createRegistry();
+        _register(rootRegistry, "eth", ethRegistry, address(0));
+        _register(ethRegistry, "test", testRegistry, address(0));
+
+        assertEq(LibRegistry.findOwner(rootRegistry, NameCoder.encode(""), 0), address(0));
+        assertEq(LibRegistry.findOwner(rootRegistry, NameCoder.encode("eth"), 0), address(this));
+        assertEq(LibRegistry.findOwner(rootRegistry, NameCoder.encode("test.eth"), 0), address(this));
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Helpers
+    ////////////////////////////////////////////////////////////////////////
+
+    function _createRegistry() internal returns (PermissionedRegistry) {
+        return new PermissionedRegistry(labelStore, address(this), EACBaseRolesLib.ALL_ROLES);
+    }
+
+    function _register(
+        PermissionedRegistry parentRegistry,
+        string memory label,
+        IRegistry registry,
+        address resolver
+    )
+        internal
+        returns (uint256 tokenId)
+    {
+        tokenId = parentRegistry.register(
+            label,
+            address(this),
+            registry,
+            resolver,
+            EACBaseRolesLib.ALL_ROLES,
+            uint64(block.timestamp + 1000)
+        );
+        if (ERC165Checker.supportsInterface(address(registry), type(IStandardRegistry).interfaceId)) {
+            IStandardRegistry(address(registry)).setParent(parentRegistry, label);
+        }
     }
 }

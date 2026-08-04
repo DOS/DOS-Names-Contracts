@@ -77,7 +77,7 @@ Technical details:
 
 - Normal roles are stored in the lower 128 bits of the `uint256` role bitmap. The corresponding admin roles are stored in the upper 128 bits. For a given role its admin role is found by calculating `role << 128`.
 
-- For a given resource, a **maximum of 15 assigness** can have a given role in that resource.
+- For a given resource, a **maximum of 15 assignees** can have a given role in that resource.
 
 - Assigning a role via the external methods (`grantRole`, `revokeRole`, etc) requires the caller to hold the corresponding admin role for that role.
 
@@ -85,7 +85,7 @@ Technical details:
 
 - Admin roles can, however, be revoked from oneself.
 
-=**Permission Inheritance**: When checking permissions for a resource, EAC combines (via bitwise OR) the roles from:
+**Permission Inheritance**: When checking permissions for a resource, EAC combines (via bitwise OR) the roles from:
 
 - The specific resource (e.g., your name's permissions)
 - The root resource (root-level permissions)
@@ -98,15 +98,22 @@ In registry contracts, EAC is used with these specific behaviors:
 
 **Registry-Specific Roles**: From [`RegistryRolesLib.sol`](src/registry/libraries/RegistryRolesLib.sol):
 
-| Role                      | Bit Position | Admin Bit Position | Description                                                            |
-| ------------------------- | ------------ | ------------------ | ---------------------------------------------------------------------- |
-| `ROLE_REGISTRAR`          | 0            | 128                | Can register new names (root-only)                                     |
-| `ROLE_RENEW`              | 4            | 132                | Can renew name registrations                                           |
-| `ROLE_SET_SUBREGISTRY`    | 8            | 136                | Can change subregistry addresses                                       |
-| `ROLE_SET_RESOLVER`       | 12           | 140                | Can change the resolver address                                        |
-| `ROLE_CAN_TRANSFER_ADMIN` | -            | 144                | Auto-granted to new name owner. Revoking this creates a soulbound NFT. |
+| Role                      | Bit  | Admin Bit | Scope         | Description                                                            |
+| ------------------------- | ---- | --------- | ------------- | ---------------------------------------------------------------------- |
+| `ROLE_REGISTRAR`          | 0    | 128       | Root-only     | Register and reserve new names                                         |
+| `ROLE_REGISTER_RESERVED`  | 4    | 132       | Root-only     | Promote reserved name to registered                                    |
+| `ROLE_SET_PARENT`         | 8    | 136       | Root-only     | Set parent registry                                                    |
+| `ROLE_UNREGISTER`         | 12   | 140       | Root or token | Unregister names                                                       |
+| `ROLE_RENEW`              | 16   | 144       | Root or token | Extend name expiry                                                     |
+| `ROLE_SET_SUBREGISTRY`    | 20   | 148       | Root or token | Change child registry                                                  |
+| `ROLE_SET_RESOLVER`       | 24   | 152       | Root or token | Change resolver address                                                |
+| `ROLE_CAN_TRANSFER_ADMIN` | 28\* | 156       | Root or token | Admin-only. Auto-granted to name owner. Revoke to make soulbound.      |
+| `ROLE_CAN_NAME`           | 120  | 248       | Root-only     | Name contract                                                          |
+| `ROLE_UPGRADE`            | 124  | 252       | Root-only     | UUPS proxy upgrades. WrapperRegistry targets must also be DAO-approved |
 
-**Note**: `ROLE_REGISTRAR` is a root-only role since creating new subnames has no logical resource-specific equivalent (the resource doesn't exist yet).
+\*`ROLE_CAN_TRANSFER_ADMIN` has no base role; it is admin-only (upper 128 bits).
+
+**Note**: Root-only roles have no resource-specific equivalent (e.g. `ROLE_REGISTRAR` — the resource doesn't exist until the name is created).
 
 **Admin Role Capabilities**
 
@@ -120,22 +127,29 @@ In registry contracts, EAC is used with these specific behaviors:
 - Existing **roles** delegated to other accounts remain intact unless explicitly revoked
 - Example: If Alice granted Bob `ROLE_SET_RESOLVER` and transfers the name to Charlie, Charlie becomes the new admin but Bob keeps his resolver permission
 
-#### Usage Examples
+#### Static Deployment Permissions
 
-```solidity
-// Grant a base role for a specific name
-registry.grantRoles(tokenId, ROLE_SET_RESOLVER, alice);
+Roles granted during core deployment.
 
-// Grant multiple roles at once
-uint256 roles = ROLE_SET_RESOLVER | ROLE_SET_SUBREGISTRY;
-registry.grantRoles(tokenId, roles, operator);
+| Contract        | Scope    | Target                        | REGISTRAR | REGISTER_RESERVED | SET_PARENT | UNREGISTER | RENEW | SET_SUBREGISTRY | SET_RESOLVER | CAN_TRANSFER_ADMIN | CAN_NAME | UPGRADE |
+| --------------- | -------- | ----------------------------- | --------- | ----------------- | ---------- | ---------- | ----- | --------------- | ------------ | ------------------ | -------- | ------- |
+| RootRegistry    | Root     | Deployer                      | AR        | AR                | AR         |            | AR    |                 |              |                    | AR       |         |
+| RootRegistry    | .eth     | Deployer                      |           |                   |            |            |       |                 | AR           | AR                 |          |         |
+| RootRegistry    | .reverse | Deployer                      |           |                   |            | AR         | AR    | AR              | AR           | AR                 |          |         |
+| ETHRegistry     | Root     | Deployer                      | A         | A                 | AR         |            | A     |                 |              |                    | AR       |         |
+| ETHRegistry     | Root     | `ETHRegistrar`                | R         |                   |            |            | R     |                 |              |                    |          |         |
+| ETHRegistry     | Root     | `BatchRegistrar`              | R         |                   |            |            | R     |                 |              |                    |          |         |
+| ETHRegistry     | Root     | `UnlockedMigrationController` |           | R                 |            |            |       |                 |              |                    |          |         |
+| ETHRegistry     | Root     | `LockedMigrationController`   |           | R                 |            |            |       |                 |              |                    |          |         |
+| ReverseRegistry | Root     | Deployer                      | AR        | AR                | AR         | AR         | AR    | AR              | AR           | AR                 | AR       | AR      |
 
-// Set global permissions (requires registry owner)
-registry.grantRoles(ROOT_RESOURCE, ROLE_SET_RESOLVER, admin);
+Legend: A = admin only, R = regular only, AR = admin and regular
 
-// Check permissions
-registry.hasRoles(tokenId, ROLE_SET_RESOLVER, alice);
-```
+_`ETHRegistrar`, `ETHRenewerV1`, and `ApprovedUpgradeGate` use `Ownable`, not `EnhancedAccessControl`. Implementation contracts (`PermissionedResolverImpl`, `UserRegistryImpl`, `WrapperRegistryImpl`) grant `ROLE_CAN_NAME | ROLE_CAN_NAME_ADMIN` roles at deployment; proxies receive roles via `initialize()` when created._
+
+_Under the phased migration deploy (the `deferV2Registrar` tag, always set by `phase deploy-v2` — see [docs/migration.md](docs/migration.md#phase-1-deploy-v2-contracts)), the `ETHRegistrar` grant of `REGISTRAR | RENEW` is skipped at deploy time and instead performed in [phase 6](docs/migration.md#phase-6-enable-the-v2-controller)._
+
+_The token for `eth` is registered to the deployer; `reverse` and `addr.reverse` are reserved._
 
 #### Creating Emancipated Names
 
@@ -145,7 +159,7 @@ You can create the equivalent of Name Wrapper "emancipated" names by:
 2. Locking the subregistry into the parent registry
 3. Result: Parent registry owner cannot interfere with subname operations
 
-#### Example Usage
+#### Usage Examples
 
 ```solidity
 import {RegistryRolesLib} from "./libraries/RegistryRolesLib.sol";
@@ -164,6 +178,9 @@ registry.grantRoles(
 uint256 operatorRoles = RegistryRolesLib.ROLE_SET_RESOLVER |
                         RegistryRolesLib.ROLE_SET_SUBREGISTRY;
 registry.grantRoles(tokenId, operatorRoles, operator);
+
+// Grant a role at the registry root (applies to every name; requires the root admin role)
+registry.grantRootRoles(RegistryRolesLib.ROLE_SET_RESOLVER, admin);
 
 // Check if user has required permissions
 bool canSetResolver = registry.hasRoles(
@@ -192,15 +209,45 @@ Standard interface all registries must implement:
 
 ```solidity
 interface IRegistry is IERC1155Singleton {
-  event NameRegistered(uint256 indexed tokenId, bytes32 indexed labelHash, string label, address owner, uint64 expiry, address indexed sender);
-  event NameReserved(uint256 indexed tokenId, bytes32 indexed labelHash, string label, uint64 expiry, address indexed sender);
+  event NameRegistered(
+    uint256 indexed tokenId,
+    bytes32 indexed labelHash,
+    string label,
+    address owner,
+    uint64 expiry,
+    address indexed sender
+  );
+  event NameReserved(
+    uint256 indexed tokenId,
+    bytes32 indexed labelHash,
+    string label,
+    uint64 expiry,
+    address indexed sender
+  );
   event NameUnregistered(uint256 indexed tokenId, address indexed sender);
-  event ExpiryUpdated(uint256 indexed tokenId, uint64 newExpiry, address indexed sender);
-  event SubregistryUpdated(uint256 indexed tokenId, IRegistry subregistry, address indexed sender);
-  event ResolverUpdated(uint256 indexed tokenId, address resolver, address indexed sender);
-  event TokenRegenerated(uint256 indexed oldTokenId, uint256 indexed newTokenId);
+  event ExpiryUpdated(
+    uint256 indexed tokenId,
+    uint64 newExpiry,
+    address indexed sender
+  );
+  event SubregistryUpdated(
+    uint256 indexed tokenId,
+    IRegistry subregistry,
+    address indexed sender
+  );
+  event ResolverUpdated(
+    uint256 indexed tokenId,
+    address resolver,
+    address indexed sender
+  );
+  event TokenRegenerated(
+    uint256 indexed oldTokenId,
+    uint256 indexed newTokenId
+  );
 
-  function getSubregistry(string calldata label) external view returns (IRegistry);
+  function getSubregistry(
+    string calldata label
+  ) external view returns (IRegistry);
   function getResolver(string calldata label) external view returns (address);
 }
 ```
@@ -228,11 +275,11 @@ Feature-complete registry with role-based access control:
 
 ```solidity
 struct Entry {
-  uint32 eacVersionId;    // Version counter for access control changes (incremented on permission updates)
-  uint32 tokenVersionId;  // Version counter for token regeneration (incremented on burn/remint)
-  IRegistry subregistry;  // Registry contract for subdomains under this name
-  uint64 expiry;          // Timestamp when the name expires (0 = never expires)
-  address resolver;       // Resolver contract for name resolution data
+  uint32 eacVersionId; // Version counter for access control changes (incremented on permission updates)
+  uint32 tokenVersionId; // Version counter for token regeneration (incremented on burn/remint)
+  IRegistry subregistry; // Registry contract for subdomains under this name
+  uint64 expiry; // Timestamp when the name expires (0 = never expires)
+  address resolver; // Resolver contract for name resolution data
 }
 ```
 
@@ -255,6 +302,13 @@ Modified ERC1155 allowing only one token per ID:
 - `LockedMigrationController`: Handles ENSv1 → ENSv2 migration for locked names
 - `UnlockedMigrationController`: Handles ENSv1 → ENSv2 migration for unlocked names
 
+Scripts for running the migration end-to-end:
+
+- [Phased migration](docs/migration.md) — the phase-by-phase workflow that runs the v1 → v2 cutover: phase definitions, the `bun run migration` operator CLI, the Hardhat `migration` tasks, and the fork/clean-testnet rehearsals.
+- [Pre-migration](docs/premigration.md) — seed v1 registrations into the v2 registry as _reserved_ entries, via `BatchRegistrar`.
+- [Prepare migration](docs/prepareMigration.md) — swap registry roles from `BatchRegistrar` to `ETHRegistrar` and the two migration controllers once pre-migration is complete.
+- [Universal Resolver structure](docs/universalResolver.md) — the proxy chain used to cut universal resolution over from v1 to v2, and the phased deploy scripts that manage it.
+
 ### Resolution
 
 #### `UniversalResolverV2` - One-Stop Resolution
@@ -268,6 +322,8 @@ Single contract for resolving any ENS name:
 - Wildcard resolution
 - Batch resolution
 
+On live networks, clients reach it through a chain of upgradable proxies that manages the v1 → v2 cutover — see [Universal Resolver structure](docs/universalResolver.md).
+
 **Example**:
 
 ```solidity
@@ -278,6 +334,15 @@ Single contract for resolving any ENS name:
 );
 address resolved = abi.decode(result, (address));
 ```
+
+## Deployed Addresses
+
+Generated contract address tables, regenerated automatically at the end of `phase deploy-v2` (or on demand with `bun run docs:addresses`):
+
+- [Sepolia](docs/addresses/sepolia.md)
+- [Mainnet](docs/addresses/mainnet.md)
+
+> **Operational note (Sepolia, temporary):** the intermediate URP `0x6d80F2172CFdEc5730fE683860C33d26fC42e6F1` has been repointed from the current fresh deployment (`deployments/sepolia`) back to the previous deployment's `UniversalResolverV2` `0x2f8a180604c42457cb56c7c4f708748ff1f91df1` (`deployments/sepolia-official-v1-20260525-r2`), so the public entrypoint `0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe` again resolves v1 names. This is a temporary measure at the team's request until the fresh deployment's v1 mirror is wired up; to revert, run `phase upgrade-managed-urp --network sepolia --deployment-network sepolia` (the current stack).
 
 ## Getting started
 
@@ -326,6 +391,7 @@ Or run specific test suites:
 bun run test:hardhat  # Run Hardhat tests
 bun run test:forge    # Run Forge tests
 bun run test:hardhat test/Ens.t.ts # specific Hardhat test
+bun run test:e2e # end-to-end tests
 ```
 
 ## Running the Devnet
@@ -341,6 +407,17 @@ bun run devnet        # runs w/last build
 ```
 
 This will start a local chain at http://localhost:8545 (Chain ID: 31337)
+
+To populate the devnet with test names (registrations, subnames, aliases, renewals, etc.):
+
+```sh
+bun run devnet --testNames
+```
+
+This runs `testNames()` which creates 17 names in various states. For details on the test data and the events emitted, see:
+
+- [Indexing Test Names](../docs/indexing-test-names.md) — what each test name does and which events it emits
+- [Indexing ENSv2 Events](../docs/indexing-ensv2-events.md) — full reference of all ENSv2 contract events
 
 ### Using Docker Compose
 
