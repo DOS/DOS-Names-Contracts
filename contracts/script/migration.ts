@@ -1113,6 +1113,7 @@ export async function runPreMigrationCommand(
     dryRun?: boolean;
   },
   resume: boolean,
+  runMain: (argv: string[]) => Promise<void> = preMigrationMain,
 ) {
   const network = opts.network ?? "mainnet";
   const deploymentNetwork = opts.deploymentNetwork ?? network;
@@ -1189,7 +1190,7 @@ export async function runPreMigrationCommand(
     if (opts.bonusPeriodDays)
       args.push("--bonus-period-days", opts.bonusPeriodDays);
     if (resume) args.push("--continue");
-    await preMigrationMain(args);
+    await runMain(args);
   } finally {
     process.chdir(previousCwd);
   }
