@@ -2,6 +2,7 @@
 pragma solidity >=0.8.13;
 
 import {Script} from "forge-std/Script.sol";
+
 import {GatewayProvider} from "@ens/contracts/ccipRead/GatewayProvider.sol";
 import {HexUtils} from "@ens/contracts/utils/HexUtils.sol";
 import {VerifiableFactory} from "@ensdomains/verifiable-factory/VerifiableFactory.sol";
@@ -9,6 +10,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
+
 import {DOSRegistrar} from "~src/registrar/DOSRegistrar.sol";
 import {
     DiscountPoint,

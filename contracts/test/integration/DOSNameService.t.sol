@@ -4,6 +4,7 @@ pragma solidity >=0.8.13;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IAddressResolver} from "@ens/contracts/resolvers/profiles/IAddressResolver.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
+
 import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
 import {DOSRegistrar} from "~src/registrar/DOSRegistrar.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";

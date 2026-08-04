@@ -54,7 +54,12 @@ jobs:
           bun run coverage:reports
 
       - name: Upload coverage
-        run: cd contracts && bun run coverage:upload
+        run: |
+          if [ -z "$CC_TOKEN" ]; then
+            echo "CODECOV_TOKEN is not configured; skipping coverage upload."
+            exit 0
+          fi
+          cd contracts && bun run coverage:upload
         env:
           CC_TOKEN: ${{ secrets.CODECOV_TOKEN }}
           CC_GIT_SERVICE: github
@@ -82,7 +87,12 @@ jobs:
           bun run coverage:reports
 
       - name: Upload coverage
-        run: cd contracts && bun run coverage:upload
+        run: |
+          if [ -z "$CC_TOKEN" ]; then
+            echo "CODECOV_TOKEN is not configured; skipping coverage upload."
+            exit 0
+          fi
+          cd contracts && bun run coverage:upload
         env:
           CC_TOKEN: ${{ secrets.CODECOV_TOKEN }}
           CC_GIT_SERVICE: github
