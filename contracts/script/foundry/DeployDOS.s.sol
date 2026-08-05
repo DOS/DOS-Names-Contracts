@@ -67,7 +67,7 @@ contract DeployDOS is Script, ERC1155Holder {
     /// @notice Broadcasts a DOS Name Service deployment using environment configuration.
     /// @dev Required env: `PRIVATE_KEY`. Optional env: `BENEFICIARY`, `PAYMENT_TOKEN`.
     /// @return deployment The deployed contract set.
-    function run() external returns (Deployment memory deployment) {
+    function run() external virtual returns (Deployment memory deployment) {
         uint256 privateKey = vm.envUint("PRIVATE_KEY");
         address deployer = vm.addr(privateKey);
         address beneficiary = vm.envOr("BENEFICIARY", deployer);
@@ -233,7 +233,7 @@ contract DeployDOS is Script, ERC1155Holder {
             RegistryRolesLib.ROLE_SET_URI_ADMIN;
     }
 
-    function _tldTokenRoles() internal pure returns (uint256) {
+    function _tldTokenRoles() internal pure virtual returns (uint256) {
         return
             RegistryRolesLib.ROLE_SET_SUBREGISTRY |
             RegistryRolesLib.ROLE_SET_SUBREGISTRY_ADMIN |
