@@ -24,9 +24,14 @@ contract DeployDOSMainnetTest is Test {
         DeployDOSMainnet deployer = new DeployDOSMainnet();
         WrappedDOS paymentToken = new WrappedDOS();
 
-        DeployDOSMainnet.MainnetDeployment memory deployment = deployer.deployMainnet(
-            address(deployer), PROTOCOL_OWNER, PROTOCOL_OWNER, IERC20(address(paymentToken)), 7979
-        );
+        DeployDOSMainnet.MainnetDeployment memory deployment =
+            deployer.deployMainnet(
+                address(deployer),
+                PROTOCOL_OWNER,
+                PROTOCOL_OWNER,
+                IERC20(address(paymentToken)),
+                7979
+            );
 
         assertEq(address(deployment.paymentToken), address(paymentToken));
         assertEq(deployment.names.dosRegistrar.owner(), PROTOCOL_OWNER);
@@ -53,7 +58,10 @@ contract DeployDOSMainnetTest is Test {
 
         vm.expectRevert();
         vm.prank(address(deployer));
-        deployment.names.rootRegistry.setSubregistry(reverseTokenId, IRegistry(address(deployment.names.dosRegistry)));
+        deployment.names.rootRegistry.setSubregistry(
+            reverseTokenId,
+            IRegistry(address(deployment.names.dosRegistry))
+        );
     }
 
     function test_preflightAcceptsCanonicalMainnetConfiguration() external {
@@ -62,7 +70,12 @@ contract DeployDOSMainnetTest is Test {
         vm.chainId(MAINNET_CHAIN_ID);
         vm.deal(MAINNET_DEPLOYER, 1 ether);
 
-        deployer.preflightMainnet(MAINNET_DEPLOYER, PROTOCOL_OWNER, PROTOCOL_OWNER, address(paymentToken));
+        deployer.preflightMainnet(
+            MAINNET_DEPLOYER,
+            PROTOCOL_OWNER,
+            PROTOCOL_OWNER,
+            address(paymentToken)
+        );
     }
 
     function test_preflightRejectsWrongChain() external {
@@ -71,8 +84,15 @@ contract DeployDOSMainnetTest is Test {
         vm.chainId(3939);
         vm.deal(MAINNET_DEPLOYER, 1 ether);
 
-        vm.expectRevert(abi.encodeWithSelector(DeployDOSMainnet.MainnetUnexpectedChain.selector, 3939, 7979));
-        deployer.preflightMainnet(MAINNET_DEPLOYER, PROTOCOL_OWNER, PROTOCOL_OWNER, address(paymentToken));
+        vm.expectRevert(
+            abi.encodeWithSelector(DeployDOSMainnet.MainnetUnexpectedChain.selector, 3939, 7979)
+        );
+        deployer.preflightMainnet(
+            MAINNET_DEPLOYER,
+            PROTOCOL_OWNER,
+            PROTOCOL_OWNER,
+            address(paymentToken)
+        );
     }
 
     function test_preflightRejectsWrongSigner() external {
@@ -83,7 +103,11 @@ contract DeployDOSMainnetTest is Test {
         vm.deal(wrongSigner, 1 ether);
 
         vm.expectRevert(
-            abi.encodeWithSelector(DeployDOSMainnet.MainnetUnexpectedDeployer.selector, wrongSigner, MAINNET_DEPLOYER)
+            abi.encodeWithSelector(
+                DeployDOSMainnet.MainnetUnexpectedDeployer.selector,
+                wrongSigner,
+                MAINNET_DEPLOYER
+            )
         );
         deployer.preflightMainnet(wrongSigner, PROTOCOL_OWNER, PROTOCOL_OWNER, address(paymentToken));
     }
@@ -96,9 +120,18 @@ contract DeployDOSMainnetTest is Test {
         vm.deal(MAINNET_DEPLOYER, 1 ether);
 
         vm.expectRevert(
-            abi.encodeWithSelector(DeployDOSMainnet.MainnetUnexpectedOwner.selector, wrongOwner, PROTOCOL_OWNER)
+            abi.encodeWithSelector(
+                DeployDOSMainnet.MainnetUnexpectedOwner.selector,
+                wrongOwner,
+                PROTOCOL_OWNER
+            )
         );
-        deployer.preflightMainnet(MAINNET_DEPLOYER, wrongOwner, PROTOCOL_OWNER, address(paymentToken));
+        deployer.preflightMainnet(
+            MAINNET_DEPLOYER,
+            wrongOwner,
+            PROTOCOL_OWNER,
+            address(paymentToken)
+        );
     }
 
     function test_preflightRejectsWrongBeneficiary() external {
@@ -110,10 +143,17 @@ contract DeployDOSMainnetTest is Test {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                DeployDOSMainnet.MainnetUnexpectedBeneficiary.selector, wrongBeneficiary, PROTOCOL_OWNER
+                DeployDOSMainnet.MainnetUnexpectedBeneficiary.selector,
+                wrongBeneficiary,
+                PROTOCOL_OWNER
             )
         );
-        deployer.preflightMainnet(MAINNET_DEPLOYER, PROTOCOL_OWNER, wrongBeneficiary, address(paymentToken));
+        deployer.preflightMainnet(
+            MAINNET_DEPLOYER,
+            PROTOCOL_OWNER,
+            wrongBeneficiary,
+            address(paymentToken)
+        );
     }
 
     function test_preflightRejectsInsufficientBalance() external {
@@ -123,9 +163,18 @@ contract DeployDOSMainnetTest is Test {
         vm.deal(MAINNET_DEPLOYER, 1 ether - 1);
 
         vm.expectRevert(
-            abi.encodeWithSelector(DeployDOSMainnet.MainnetInsufficientDeploymentBalance.selector, 1 ether - 1, 1 ether)
+            abi.encodeWithSelector(
+                DeployDOSMainnet.MainnetInsufficientDeploymentBalance.selector,
+                1 ether - 1,
+                1 ether
+            )
         );
-        deployer.preflightMainnet(MAINNET_DEPLOYER, PROTOCOL_OWNER, PROTOCOL_OWNER, address(paymentToken));
+        deployer.preflightMainnet(
+            MAINNET_DEPLOYER,
+            PROTOCOL_OWNER,
+            PROTOCOL_OWNER,
+            address(paymentToken)
+        );
     }
 
     function test_preflightRejectsWrongWDOSDecimals() external {
@@ -134,8 +183,15 @@ contract DeployDOSMainnetTest is Test {
         vm.chainId(MAINNET_CHAIN_ID);
         vm.deal(MAINNET_DEPLOYER, 1 ether);
 
-        vm.expectRevert(abi.encodeWithSelector(DeployDOSMainnet.UnexpectedPaymentTokenDecimals.selector, 17, 18));
-        deployer.preflightMainnet(MAINNET_DEPLOYER, PROTOCOL_OWNER, PROTOCOL_OWNER, address(paymentToken));
+        vm.expectRevert(
+            abi.encodeWithSelector(DeployDOSMainnet.UnexpectedPaymentTokenDecimals.selector, 17, 18)
+        );
+        deployer.preflightMainnet(
+            MAINNET_DEPLOYER,
+            PROTOCOL_OWNER,
+            PROTOCOL_OWNER,
+            address(paymentToken)
+        );
     }
 
     function test_preflightRejectsMissingWDOSCode() external {
@@ -143,7 +199,9 @@ contract DeployDOSMainnetTest is Test {
         vm.chainId(MAINNET_CHAIN_ID);
         vm.deal(MAINNET_DEPLOYER, 1 ether);
 
-        vm.expectRevert(abi.encodeWithSelector(DeployDOSMainnet.MissingPaymentTokenCode.selector, CANONICAL_WDOS));
+        vm.expectRevert(
+            abi.encodeWithSelector(DeployDOSMainnet.MissingPaymentTokenCode.selector, CANONICAL_WDOS)
+        );
         deployer.preflightMainnet(MAINNET_DEPLOYER, PROTOCOL_OWNER, PROTOCOL_OWNER, CANONICAL_WDOS);
     }
 }

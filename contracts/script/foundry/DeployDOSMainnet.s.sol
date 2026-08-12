@@ -47,7 +47,12 @@ contract DeployDOSMainnet is DeployDOSTestnet {
     }
 
     /// @notice Fails before broadcasting if the Mainnet deployment configuration is not canonical.
-    function preflightMainnet(address broadcaster, address owner, address beneficiary, address paymentToken)
+    function preflightMainnet(
+        address broadcaster,
+        address owner,
+        address beneficiary,
+        address paymentToken
+    )
         public
         view
     {
@@ -82,7 +87,10 @@ contract DeployDOSMainnet is DeployDOSTestnet {
         address beneficiary,
         IERC20 paymentToken,
         uint256 chainId
-    ) public returns (MainnetDeployment memory deployment) {
+    )
+        public
+        returns (MainnetDeployment memory deployment)
+    {
         deployment.paymentToken = paymentToken;
         deployment.names = deploy(initialOwner, beneficiary, paymentToken, chainId);
         _registerBensSmokeName(deployment.names, initialOwner, owner, chainId);
