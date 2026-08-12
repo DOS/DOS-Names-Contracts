@@ -66,10 +66,6 @@ $env:BENEFICIARY = $beneficiary
 
 $cast = Resolve-FoundryCommand -Name "cast"
 $forge = Resolve-FoundryCommand -Name "forge"
-$deployer = (& $cast wallet address --private-key $privateKey).Trim().ToLowerInvariant()
-if ($LASTEXITCODE -ne 0 -or $deployer -ne $expectedDeployer) {
-    throw "PRIVATE_KEY does not control the canonical DOS Testnet deployer"
-}
 
 $chainId = [int]((& $cast chain-id --rpc-url $RpcUrl).Trim())
 if ($LASTEXITCODE -ne 0 -or $chainId -ne $expectedChainId) {
@@ -81,7 +77,7 @@ if ($LASTEXITCODE -ne 0 -or $genesis -ne $expectedGenesisHash) {
     throw "RPC genesis hash does not match DOS Testnet"
 }
 
-$balanceOutput = & $cast balance $deployer --rpc-url $RpcUrl
+$balanceOutput = & $cast balance $expectedDeployer --rpc-url $RpcUrl
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($balanceOutput)) {
     throw "Unable to read the canonical deployer balance"
 }

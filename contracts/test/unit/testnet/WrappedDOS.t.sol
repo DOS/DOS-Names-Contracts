@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import {Test} from "forge-std/Test.sol";
+import {Vm} from "forge-std/Vm.sol";
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
@@ -15,6 +16,11 @@ import {LibLabel} from "~src/utils/LibLabel.sol";
 import {WrappedDOS} from "~src/testnet/WrappedDOS.sol";
 
 contract WrappedDOSTest is Test {
+    bytes32 internal constant LABEL_REGISTERED_TOPIC =
+        keccak256("LabelRegistered(uint256,bytes32,string,address,uint64,address)");
+    bytes32 internal constant RESOLVER_UPDATED_TOPIC = keccak256("ResolverUpdated(uint256,address,address)");
+    bytes32 internal constant ADDR_CHANGED_TOPIC = keccak256("AddrChanged(bytes32,address)");
+    bytes32 internal constant ADDRESS_CHANGED_TOPIC = keccak256("AddressChanged(bytes32,uint256,bytes)");
     address internal constant TESTNET_DEPLOYER = 0x99999e454138f6be73E2bE82c890bc5765749999;
     address internal constant PROTOCOL_OWNER = 0x310Bc061214ee89aF5CfB28a6ebF96c5436fa3CD;
     WrappedDOS internal wdos;
@@ -132,6 +138,41 @@ contract WrappedDOSTest is Test {
             deployment.names.priceOracle.getPaymentTokenRatio(IERC20(address(deployment.wdos)));
         assertEq(numer, 1e6);
         assertEq(denom, 1);
+    }
+
+    function test_testnetSmokeResolverEventsFollowDynamicSourceCreation() external {
+        DeployDOSTestnet deployer = new DeployDOSTestnet();
+        address protocolOwner = makeAddr("protocolOwner");
+        address beneficiary = makeAddr("beneficiary");
+
+        vm.recordLogs();
+        DeployDOSTestnet.TestnetDeployment memory deployment =
+            deployer.deployTestnet(address(deployer), protocolOwner, beneficiary, 3939);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        address registry = address(deployment.names.dosRegistry);
+        address resolver = deployment.names.dosRegistry.getResolver("bens-smoke");
+        uint256 labelRegisteredIndex = type(uint256).max;
+        uint256 resolverUpdatedIndex = type(uint256).max;
+        uint256 addrChangedIndex = type(uint256).max;
+        uint256 addressChangedIndex = type(uint256).max;
+
+        for (uint256 index; index < logs.length; ++index) {
+            Vm.Log memory entry = logs[index];
+            if (entry.emitter == registry && entry.topics[0] == LABEL_REGISTERED_TOPIC) {
+                labelRegisteredIndex = index;
+            } else if (entry.emitter == registry && entry.topics[0] == RESOLVER_UPDATED_TOPIC) {
+                resolverUpdatedIndex = index;
+            } else if (entry.emitter == resolver && entry.topics[0] == ADDR_CHANGED_TOPIC) {
+                addrChangedIndex = index;
+            } else if (entry.emitter == resolver && entry.topics[0] == ADDRESS_CHANGED_TOPIC) {
+                addressChangedIndex = index;
+            }
+        }
+
+        assertLt(labelRegisteredIndex, resolverUpdatedIndex);
+        assertLt(resolverUpdatedIndex, addrChangedIndex);
+        assertLt(addrChangedIndex, addressChangedIndex);
     }
 
     function test_runRejectsWrongSignerBeforeBroadcast() external {

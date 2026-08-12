@@ -23,6 +23,7 @@ import {
   handleTransferBatch,
   handleTransferSingle,
 } from "../src/registry";
+import { handleAddrChanged } from "../src/resolver";
 import {
   handleUserRegistryLabelRegistered,
   handleUserRegistryLabelUnregistered,
@@ -54,6 +55,7 @@ import { ResolverUpdated as UserRegistryResolverUpdated } from "../src/types/tem
 import { ExpiryUpdated as UserRegistryExpiryUpdated } from "../src/types/templates/UserRegistryTemplate/PermissionedRegistry";
 import { TokenRegenerated as UserRegistryTokenRegenerated } from "../src/types/templates/UserRegistryTemplate/PermissionedRegistry";
 import { SubregistryUpdated as UserRegistrySubregistryUpdated } from "../src/types/templates/UserRegistryTemplate/PermissionedRegistry";
+import { AddrChanged } from "../src/types/Resolver/PermissionedResolver";
 import { Domain, RegistryPath } from "../src/types/schema";
 
 const OWNER = "0x89205a3a3b2a69de6dbf7f01ed13b2108b2c43e7";
@@ -201,6 +203,33 @@ function resolverUpdated(tokenId: i32, resolver: string, logIndex: i32): Resolve
     ),
     new ethereum.EventParam(
       "sender",
+      ethereum.Value.fromAddress(Address.fromString(OWNER))
+    ),
+  ];
+  return event;
+}
+
+function addrChanged(node: string, logIndex: i32): AddrChanged {
+  let mock = newMockEvent();
+  mock.address = Address.fromString(RESOLVER);
+  mock.logIndex = BigInt.fromI32(logIndex);
+  let event = new AddrChanged(
+    mock.address,
+    mock.logIndex,
+    mock.transactionLogIndex,
+    mock.logType,
+    mock.block,
+    mock.transaction,
+    mock.parameters,
+    mock.receipt
+  );
+  event.parameters = [
+    new ethereum.EventParam(
+      "node",
+      ethereum.Value.fromFixedBytes(Bytes.fromHexString(node))
+    ),
+    new ethereum.EventParam(
+      "a",
       ethereum.Value.fromAddress(Address.fromString(OWNER))
     ),
   ];
@@ -1042,6 +1071,14 @@ test("resolver discovery creates a dynamic source and zero address clears it", (
   handleResolverUpdated(resolverUpdated(123, ZERO_ADDRESS, 2));
   let domain = Domain.load(ALICE_DOS)!;
   assert.assertNull(domain.resolver);
+});
+
+test("resolver address emitted after registration materializes forward resolution", () => {
+  handleLabelRegistered(registration(123));
+  handleResolverUpdated(resolverUpdated(123, RESOLVER, 1));
+  handleAddrChanged(addrChanged(ALICE_DOS, 2));
+
+  assert.fieldEquals("Domain", ALICE_DOS, "resolvedAddress", OWNER);
 });
 
 test("unregistration retires the token mapping without losing domain history", () => {

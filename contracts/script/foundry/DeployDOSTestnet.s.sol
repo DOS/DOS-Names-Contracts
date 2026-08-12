@@ -110,8 +110,6 @@ contract DeployDOSTestnet is DeployDOS {
                 )
         );
         bytes32 node = NameCoder.namehash(NameCoder.encode(BENS_SMOKE_NAME), 0);
-        resolver.setAddr(node, initialOwner);
-        resolver.setAddr(node, (1 << 31) | chainId, abi.encodePacked(initialOwner));
 
         PermissionedRegistry registry = deployment.dosRegistry;
         registry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, initialOwner);
@@ -124,6 +122,11 @@ contract DeployDOSTestnet is DeployDOS {
             uint64(block.timestamp + BENS_SMOKE_LIFETIME)
         );
         registry.revokeRootRoles(RegistryRolesLib.ROLE_REGISTRAR, initialOwner);
+
+        // Resolver records must be emitted after ResolverUpdated creates the
+        // dynamic Graph Node source. Dynamic sources cannot replay prior logs.
+        resolver.setAddr(node, initialOwner);
+        resolver.setAddr(node, (1 << 31) | chainId, abi.encodePacked(initialOwner));
 
         deployment.reverseRegistrar.setName(BENS_SMOKE_NAME);
         resolver.grantRootRoles(EACBaseRolesLib.ALL_ROLES, owner);
