@@ -802,6 +802,19 @@ test("self-linked subregistries fail closed without creating a cyclic path", () 
   assert.notInStore("RegistryPath", SUB_ALICE_DOS);
 });
 
+test("replacing an active nested registry with an ancestor retires the old path", () => {
+  handleLabelRegistered(registration(123));
+  activateUserRegistry();
+  handleUserRegistryLabelRegistered(userRegistryRegistration(456));
+  handleUserRegistrySubregistryUpdated(userRegistrySubregistryUpdated(456));
+
+  handleUserRegistrySubregistryUpdated(
+    userRegistrySubregistryUpdated(456, USER_REGISTRY)
+  );
+
+  assert.fieldEquals("RegistryPath", SUB_ALICE_DOS, "active", "false");
+});
+
 test("replacing a subregistry retires names from the old registry", () => {
   handleLabelRegistered(registration(123));
   activateUserRegistry();

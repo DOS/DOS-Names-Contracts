@@ -411,6 +411,16 @@ export function updateSubregistry(
         ? new Array<string>()
         : (ancestryPath as string).split(",");
     if (currentAncestors.includes(currentRegistry as string)) {
+      let cyclicPath = RegistryPath.load(currentParent as string);
+      if (cyclicPath !== null && cyclicPath.active) {
+        retireRegistryTree(
+          currentParent as string,
+          Address.fromBytes(cyclicPath.registry),
+          event
+        );
+        cyclicPath.active = false;
+        cyclicPath.save();
+      }
       continue;
     }
 

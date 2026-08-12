@@ -4,16 +4,19 @@ pragma solidity ^0.8.20;
 import {Test} from "forge-std/Test.sol";
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 
-import {DeployDOS} from "../../../script/foundry/DeployDOS.s.sol";
 import {DeployDOSTestnet} from "../../../script/foundry/DeployDOSTestnet.s.sol";
 
 import {DOSRegistrar} from "~src/registrar/DOSRegistrar.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
+import {PermissionedResolver} from "~src/resolver/PermissionedResolver.sol";
 import {LibLabel} from "~src/utils/LibLabel.sol";
 import {WrappedDOS} from "~src/testnet/WrappedDOS.sol";
 
 contract WrappedDOSTest is Test {
+    address internal constant TESTNET_DEPLOYER = 0x99999e454138f6be73E2bE82c890bc5765749999;
+    address internal constant PROTOCOL_OWNER = 0x310Bc061214ee89aF5CfB28a6ebF96c5436fa3CD;
     WrappedDOS internal wdos;
     address internal holder = makeAddr("holder");
     address internal recipient = makeAddr("recipient");
@@ -103,6 +106,11 @@ contract WrappedDOSTest is Test {
         assertTrue(deployment.names.rootRegistry.roles(dosTokenId, protocolOwner) != 0);
         assertTrue(deployment.names.rootRegistry.roles(reverseTokenId, protocolOwner) != 0);
         assertEq(deployment.names.dosRegistry.ownerOf(smokeTokenId), protocolOwner);
+        address smokeResolverAddress = deployment.names.dosRegistry.getResolver("bens-smoke");
+        assertNotEq(smokeResolverAddress, address(0));
+        bytes32 smokeNode = NameCoder.namehash(NameCoder.encode("bens-smoke.dos"), 0);
+        assertEq(PermissionedResolver(smokeResolverAddress).addr(smokeNode), address(deployer));
+        assertEq(deployment.names.reverseRegistrar.nameForAddr(address(deployer)), "bens-smoke.dos");
         assertLe(
             deployment.names.dosRegistry.getExpiry(smokeTokenId),
             253402300799,
@@ -126,20 +134,69 @@ contract WrappedDOSTest is Test {
         assertEq(denom, 1);
     }
 
-    function test_runUsesCanonicalTestnetFlow() external {
+    function test_runRejectsWrongSignerBeforeBroadcast() external {
         DeployDOSTestnet deployer = new DeployDOSTestnet();
         uint256 privateKey = 0xA11CE;
-        address protocolOwner = makeAddr("runProtocolOwner");
-        address beneficiary = makeAddr("runBeneficiary");
 
         vm.setEnv("PRIVATE_KEY", vm.toString(privateKey));
-        vm.setEnv("OWNER", vm.toString(protocolOwner));
-        vm.setEnv("BENEFICIARY", vm.toString(beneficiary));
+        vm.setEnv("OWNER", vm.toString(PROTOCOL_OWNER));
+        vm.setEnv("BENEFICIARY", vm.toString(PROTOCOL_OWNER));
+        vm.chainId(3939);
 
-        DeployDOS.Deployment memory deployment = deployer.run();
+        vm.expectRevert(
+            abi.encodeWithSelector(DeployDOSTestnet.UnexpectedDeployer.selector, vm.addr(privateKey), TESTNET_DEPLOYER)
+        );
+        deployer.run();
+    }
 
-        assertEq(deployment.dosRegistrar.owner(), protocolOwner);
-        assertEq(deployment.dosRegistrar.BENEFICIARY(), beneficiary);
+    function test_preflightAcceptsCanonicalTestnetConfiguration() external {
+        DeployDOSTestnet deployer = new DeployDOSTestnet();
+        vm.chainId(3939);
+        vm.deal(TESTNET_DEPLOYER, 1 ether);
+
+        deployer.preflight(TESTNET_DEPLOYER, PROTOCOL_OWNER, PROTOCOL_OWNER);
+    }
+
+    function test_preflightRejectsWrongChain() external {
+        DeployDOSTestnet deployer = new DeployDOSTestnet();
+        vm.chainId(7979);
+        vm.deal(TESTNET_DEPLOYER, 1 ether);
+
+        vm.expectRevert(abi.encodeWithSelector(DeployDOSTestnet.UnexpectedChain.selector, 7979, 3939));
+        deployer.preflight(TESTNET_DEPLOYER, PROTOCOL_OWNER, PROTOCOL_OWNER);
+    }
+
+    function test_preflightRejectsWrongOwner() external {
+        DeployDOSTestnet deployer = new DeployDOSTestnet();
+        vm.chainId(3939);
+        vm.deal(TESTNET_DEPLOYER, 1 ether);
+
+        address wrongOwner = makeAddr("wrongOwner");
+        vm.expectRevert(abi.encodeWithSelector(DeployDOSTestnet.UnexpectedOwner.selector, wrongOwner, PROTOCOL_OWNER));
+        deployer.preflight(TESTNET_DEPLOYER, wrongOwner, PROTOCOL_OWNER);
+    }
+
+    function test_preflightRejectsWrongBeneficiary() external {
+        DeployDOSTestnet deployer = new DeployDOSTestnet();
+        vm.chainId(3939);
+        vm.deal(TESTNET_DEPLOYER, 1 ether);
+
+        address wrongBeneficiary = makeAddr("wrongBeneficiary");
+        vm.expectRevert(
+            abi.encodeWithSelector(DeployDOSTestnet.UnexpectedBeneficiary.selector, wrongBeneficiary, PROTOCOL_OWNER)
+        );
+        deployer.preflight(TESTNET_DEPLOYER, PROTOCOL_OWNER, wrongBeneficiary);
+    }
+
+    function test_preflightRejectsInsufficientBalance() external {
+        DeployDOSTestnet deployer = new DeployDOSTestnet();
+        vm.chainId(3939);
+        vm.deal(TESTNET_DEPLOYER, 1 ether - 1);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(DeployDOSTestnet.InsufficientDeploymentBalance.selector, 1 ether - 1, 1 ether)
+        );
+        deployer.preflight(TESTNET_DEPLOYER, PROTOCOL_OWNER, PROTOCOL_OWNER);
     }
 
     function test_testnetRegistrationUsesWrappedDOSAndPaysBeneficiary() external {

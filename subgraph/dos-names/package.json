@@ -8,6 +8,7 @@
     "build": "graph build",
     "render": "node scripts/render-manifest.mjs",
     "render:test": "node scripts/render-manifest.mjs tests/fixtures/dos-testnet-3939.json subgraph.template.yaml subgraph.yaml",
+    "render:deployment": "node scripts/render-manifest.mjs ../../contracts/deployments/dos-testnet-3939.json subgraph.template.yaml subgraph.yaml",
     "test": "graph test",
     "test:render": "node --test tests/render-manifest.test.mjs"
   },

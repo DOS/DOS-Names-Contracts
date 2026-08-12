@@ -144,7 +144,10 @@ jobs:
       - name: Test mappings
         run: npm test
 
-      - name: Build subgraph
+      - name: Render canonical deployment manifest
+        run: npm run render:deployment
+
+      - name: Build canonical deployment subgraph
         run: npm run build
 
   publish-docker:
