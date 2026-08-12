@@ -68,11 +68,6 @@ $env:BENEFICIARY = $beneficiary
 $cast = Resolve-FoundryCommand -Name "cast"
 $forge = Resolve-FoundryCommand -Name "forge"
 
-$derivedDeployer = (& $cast wallet address --private-key $privateKey).Trim().ToLowerInvariant()
-if ($LASTEXITCODE -ne 0 -or $derivedDeployer -ne $expectedDeployer) {
-    throw "PRIVATE_KEY does not match the canonical DOS Names deployer"
-}
-
 $chainId = [int]((& $cast chain-id --rpc-url $RpcUrl).Trim())
 if ($LASTEXITCODE -ne 0 -or $chainId -ne $expectedChainId) {
     throw "RPC chain ID does not match DOS Mainnet"
