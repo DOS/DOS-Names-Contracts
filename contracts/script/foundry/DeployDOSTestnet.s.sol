@@ -10,6 +10,7 @@ import {
     StandardRentPriceOracle
 } from "~src/registrar/StandardRentPriceOracle.sol";
 import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
+import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {PermissionedResolver} from "~src/resolver/PermissionedResolver.sol";
 import {PermissionedResolverLib} from "~src/resolver/libraries/PermissionedResolverLib.sol";
@@ -19,6 +20,7 @@ import {LibLabel} from "~src/utils/LibLabel.sol";
 /// @title Deploy DOS Name Service on testnet
 /// @notice Deploys a standard wrapped-native WDOS token and the complete `.dos` ENSv2 stack.
 contract DeployDOSTestnet is DeployDOS {
+    string internal constant BENS_SMOKE_LABEL = "bens-smoke";
     /// @notice Contracts produced by the DOS testnet deployment profile.
     struct TestnetDeployment {
         WrappedDOS wdos;
@@ -55,7 +57,28 @@ contract DeployDOSTestnet is DeployDOS {
             IERC20(address(deployment.wdos)),
             chainId
         );
+        _registerBensSmokeName(deployment.names.dosRegistry, initialOwner, owner);
         _handoff(deployment.names, initialOwner, owner);
+    }
+
+    /// @dev Creates one stable Testnet record used by Graph Node and BENS acceptance gates.
+    function _registerBensSmokeName(
+        PermissionedRegistry registry,
+        address initialOwner,
+        address owner
+    )
+        internal
+    {
+        registry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, initialOwner);
+        registry.register(
+            BENS_SMOKE_LABEL,
+            owner,
+            IRegistry(address(0)),
+            address(0),
+            0,
+            type(uint64).max
+        );
+        registry.revokeRootRoles(RegistryRolesLib.ROLE_REGISTRAR, initialOwner);
     }
 
     function _handoff(Deployment memory deployment, address initialOwner, address owner) internal {
