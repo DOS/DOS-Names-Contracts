@@ -1,9 +1,6 @@
 import {
   Address,
   BigInt,
-  ByteArray,
-  Bytes,
-  crypto,
   dataSource,
   ethereum,
   store,
@@ -22,20 +19,23 @@ import {
 import {
   Domain,
   NewResolver,
-  NewOwner,
   Registration,
-  Resolver,
-  ResolverSource,
   TokenToDomain,
   Transfer,
   WrappedDomain,
   WrappedTransfer,
 } from "./types/schema";
-import { ResolverTemplate } from "./types/templates";
-import { isActiveUserRegistry, updateSubregistry } from "./subregistry";
+import {
+  attachResolver,
+  isActiveUserRegistry,
+  loadRegistryChild,
+  materializeRegistryChild,
+  moveRegistryChildToken,
+  rememberRegistryChild,
+  updateSubregistry,
+} from "./subregistry";
 import {
   checkValidLabel,
-  concat,
   createEventID,
   createOrLoadAccount,
   EMPTY_ADDRESS,
@@ -56,86 +56,44 @@ function resolveDomainNode(event: ethereum.Event, tokenId: string): string | nul
   return mapping === null ? null : mapping.domain;
 }
 
+function contextEventID(event: ethereum.Event): string {
+  return createEventID(event)
+    .concat("-")
+    .concat(dataSource.context().getBytes("parentNode").toHexString());
+}
+
 export function handleUserRegistryLabelRegistered(event: LabelRegisteredEvent): void {
-  if (!isActiveUserRegistry(event.address)) {
-    return;
-  }
   let label = event.params.label;
   if (!checkValidLabel(label)) {
     return;
   }
-
-  let context = dataSource.context();
-  let parentNode = context.getBytes("parentNode");
-  let parentId = parentNode.toHexString();
-  let parent = Domain.load(parentId);
-  if (parent === null || parent.name === null) {
+  let child = rememberRegistryChild(
+    event.address,
+    event.params.tokenId,
+    label,
+    event.params.labelHash,
+    event.params.owner,
+    event.params.expiry,
+    event.block.timestamp
+  );
+  if (!isActiveUserRegistry(event.address)) {
     return;
   }
-
-  let node = crypto
-    .keccak256(concat(changetype<ByteArray>(parentNode), event.params.labelHash))
-    .toHexString();
-  let account = createOrLoadAccount(event.params.owner.toHexString());
-  let domain = Domain.load(node);
-  let isNew = domain === null;
-  if (domain === null) {
-    domain = new Domain(node);
-    domain.createdAt = event.block.timestamp;
-    domain.subdomainCount = 0;
-    domain.storedOffchain = false;
-    domain.resolvedWithWildcard = false;
-    domain.isMigrated = true;
-  }
-
-  domain.owner = account.id;
-  domain.registrant = account.id;
-  domain.wrappedOwner = account.id;
-  domain.parent = parentId;
-  domain.labelName = label;
-  domain.labelhash = event.params.labelHash;
-  domain.name = label.concat(".").concat(parent.name!);
-  domain.expiryDate = event.params.expiry;
-  domain.tokenId = event.params.tokenId;
-  domain.save();
-
-  if (isNew) {
-    parent.subdomainCount = parent.subdomainCount + 1;
-    parent.save();
-  }
-
-  let tokenMapping = new TokenToDomain(
-    registryTokenId(event, tokenIdToHex(event.params.tokenId))
+  materializeRegistryChild(
+    dataSource.context().getBytes("parentNode").toHexString(),
+    event.address,
+    child,
+    event
   );
-  tokenMapping.domain = node;
-  tokenMapping.save();
-
-  let registration = new Registration(node);
-  registration.domain = node;
-  registration.registrationDate = event.block.timestamp;
-  registration.expiryDate = event.params.expiry;
-  registration.registrant = account.id;
-  registration.labelName = label;
-  registration.save();
-
-  let wrappedDomain = new WrappedDomain(node);
-  wrappedDomain.domain = node;
-  wrappedDomain.expiryDate = event.params.expiry;
-  wrappedDomain.fuses = 0;
-  wrappedDomain.owner = account.id;
-  wrappedDomain.name = domain.name;
-  wrappedDomain.save();
-
-  let domainEvent = new NewOwner(createEventID(event));
-  domainEvent.blockNumber = event.block.number.toI32();
-  domainEvent.transactionID = event.transaction.hash;
-  domainEvent.parentDomain = parentId;
-  domainEvent.domain = node;
-  domainEvent.owner = account.id;
-  domainEvent.save();
 }
 
 export function handleUserRegistryResolverUpdated(event: ResolverUpdatedEvent): void {
+  let child = loadRegistryChild(event.address, event.params.tokenId);
+  if (child === null) {
+    return;
+  }
+  child.resolver = event.params.resolver;
+  child.save();
   if (!isActiveUserRegistry(event.address)) {
     return;
   }
@@ -157,29 +115,10 @@ export function handleUserRegistryResolverUpdated(event: ResolverUpdatedEvent): 
     return;
   }
 
-  let sourceId = resolverAddress.toHexString();
-  let source = ResolverSource.load(sourceId);
-  if (source === null) {
-    source = new ResolverSource(sourceId);
-    source.address = resolverAddress;
-    source.save();
-    ResolverTemplate.create(resolverAddress);
-  }
+  attachResolver(domain, resolverAddress);
+  let resolverId = resolverAddress.toHexString().concat("-").concat(node);
 
-  let resolverId = sourceId.concat("-").concat(node);
-  let resolver = Resolver.load(resolverId);
-  if (resolver === null) {
-    resolver = new Resolver(resolverId);
-    resolver.domain = node;
-    resolver.address = resolverAddress;
-    resolver.save();
-  }
-
-  domain.resolver = resolverId;
-  domain.resolvedAddress = resolver.addr;
-  domain.save();
-
-  let domainEvent = new NewResolver(createEventID(event));
+  let domainEvent = new NewResolver(contextEventID(event));
   domainEvent.domain = node;
   domainEvent.blockNumber = event.block.number.toI32();
   domainEvent.transactionID = event.transaction.hash;
@@ -188,6 +127,11 @@ export function handleUserRegistryResolverUpdated(event: ResolverUpdatedEvent): 
 }
 
 export function handleUserRegistryExpiryUpdated(event: ExpiryUpdatedEvent): void {
+  let child = loadRegistryChild(event.address, event.params.tokenId);
+  if (child !== null) {
+    child.expiryDate = event.params.newExpiry;
+    child.save();
+  }
   if (!isActiveUserRegistry(event.address)) {
     return;
   }
@@ -216,10 +160,15 @@ export function handleUserRegistryExpiryUpdated(event: ExpiryUpdatedEvent): void
 }
 
 export function handleUserRegistryTransferSingle(event: TransferSingleEvent): void {
-  if (
-    !isActiveUserRegistry(event.address) ||
-    event.params.value.equals(BigInt.fromI32(0))
-  ) {
+  if (event.params.value.equals(BigInt.fromI32(0))) {
+    return;
+  }
+  let child = loadRegistryChild(event.address, event.params.id);
+  if (child !== null) {
+    child.owner = event.params.to;
+    child.save();
+  }
+  if (!isActiveUserRegistry(event.address)) {
     return;
   }
   let node = resolveDomainNode(event, tokenIdToHex(event.params.id));
@@ -236,14 +185,20 @@ export function handleUserRegistryTransferSingle(event: TransferSingleEvent): vo
 }
 
 export function handleUserRegistryTransferBatch(event: TransferBatchEvent): void {
-  if (!isActiveUserRegistry(event.address)) {
-    return;
-  }
+  let active = isActiveUserRegistry(event.address);
   let ids = event.params.ids;
   let values = event.params.values;
   let count = ids.length < values.length ? ids.length : values.length;
   for (let i = 0; i < count; i++) {
     if (values[i].equals(BigInt.fromI32(0))) {
+      continue;
+    }
+    let child = loadRegistryChild(event.address, ids[i]);
+    if (child !== null) {
+      child.owner = event.params.to;
+      child.save();
+    }
+    if (!active) {
       continue;
     }
     let node = resolveDomainNode(event, tokenIdToHex(ids[i]));
@@ -286,7 +241,7 @@ function applyOwnershipTransfer(
     registration.save();
   }
 
-  let transferEvent = new Transfer(createEventID(event).concat(eventSuffix));
+  let transferEvent = new Transfer(contextEventID(event).concat(eventSuffix));
   transferEvent.domain = node;
   transferEvent.blockNumber = event.block.number.toI32();
   transferEvent.transactionID = event.transaction.hash;
@@ -294,7 +249,7 @@ function applyOwnershipTransfer(
   transferEvent.save();
 
   let wrappedTransfer = new WrappedTransfer(
-    createEventID(event).concat("-wrapped").concat(eventSuffix)
+    contextEventID(event).concat("-wrapped").concat(eventSuffix)
   );
   wrappedTransfer.domain = node;
   wrappedTransfer.blockNumber = event.block.number.toI32();
@@ -304,6 +259,11 @@ function applyOwnershipTransfer(
 }
 
 export function handleUserRegistryTokenRegenerated(event: TokenRegeneratedEvent): void {
+  moveRegistryChildToken(
+    event.address,
+    event.params.oldTokenId,
+    event.params.newTokenId
+  );
   if (!isActiveUserRegistry(event.address)) {
     return;
   }
@@ -327,6 +287,11 @@ export function handleUserRegistryTokenRegenerated(event: TokenRegeneratedEvent)
 }
 
 export function handleUserRegistrySubregistryUpdated(event: SubregistryUpdatedEvent): void {
+  let child = loadRegistryChild(event.address, event.params.tokenId);
+  if (child !== null) {
+    child.subregistry = event.params.subregistry;
+    child.save();
+  }
   if (!isActiveUserRegistry(event.address)) {
     return;
   }
@@ -336,10 +301,17 @@ export function handleUserRegistrySubregistryUpdated(event: SubregistryUpdatedEv
     return;
   }
 
-  updateSubregistry(node, event.params.subregistry);
+  updateSubregistry(node, event.params.subregistry, event);
 }
 
 export function handleUserRegistryLabelUnregistered(event: LabelUnregisteredEvent): void {
+  let child = loadRegistryChild(event.address, event.params.tokenId);
+  if (child !== null) {
+    child.active = false;
+    child.expiryDate = event.block.timestamp;
+    child.owner = Address.fromString(EMPTY_ADDRESS);
+    child.save();
+  }
   if (!isActiveUserRegistry(event.address)) {
     return;
   }

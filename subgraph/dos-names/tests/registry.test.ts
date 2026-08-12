@@ -33,6 +33,7 @@ import {
   handleUserRegistryTransferBatch,
   handleUserRegistryTransferSingle,
 } from "../src/userRegistry";
+import { updateSubregistry } from "../src/subregistry";
 import {
   LabelRegistered,
   LabelUnregistered,
@@ -68,6 +69,8 @@ const SUB_ALICE_DOS =
   "0x1c1ff2cdbb0b7cc0b67c4b92a0ba7633d2cf2d2e756ea950fbe437050296f930";
 const BOB_DOS =
   "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const SUB_BOB_DOS =
+  "0x7ee7b82ae369bf398c232f0c2b4def081af73b8ed707d68cce8a3f685b0c07f7";
 
 function registration(tokenId: i32): LabelRegistered {
   let mock = newMockEvent();
@@ -683,7 +686,34 @@ test("detached user registries stop mutating their former parent path", () => {
   assert.fieldEquals("Domain", SUB_ALICE_DOS, "owner", OWNER);
 });
 
-test("a shared user registry keeps token mappings scoped to each parent", () => {
+test("detached registry sources retain current state for a later attachment", () => {
+  handleLabelRegistered(registration(123));
+  activateUserRegistry();
+  handleUserRegistryLabelRegistered(userRegistryRegistration(456));
+  handleSubregistryUpdated(subregistryUpdated(123, ZERO_ADDRESS));
+  handleUserRegistryTransferSingle(userRegistryTransfer(456));
+
+  let bob = new Domain(BOB_DOS);
+  bob.name = "bob.dos";
+  bob.labelName = "bob";
+  bob.owner = OWNER;
+  bob.isMigrated = true;
+  bob.createdAt = BigInt.fromI32(1);
+  bob.subdomainCount = 0;
+  bob.storedOffchain = false;
+  bob.resolvedWithWildcard = false;
+  bob.save();
+  updateSubregistry(
+    BOB_DOS,
+    Address.fromString(USER_REGISTRY),
+    subregistryUpdated(123)
+  );
+
+  assert.fieldEquals("Domain", SUB_ALICE_DOS, "owner", OWNER);
+  assert.fieldEquals("Domain", SUB_BOB_DOS, "owner", NEW_OWNER);
+});
+
+test("attaching a shared registry backfills existing children for the new parent", () => {
   handleLabelRegistered(registration(123));
   activateUserRegistry();
   handleUserRegistryLabelRegistered(userRegistryRegistration(456));
@@ -698,18 +728,47 @@ test("a shared user registry keeps token mappings scoped to each parent", () => 
   bob.storedOffchain = false;
   bob.resolvedWithWildcard = false;
   bob.save();
-  let path = new RegistryPath(BOB_DOS);
-  path.registry = Address.fromString(USER_REGISTRY);
-  path.parentDomain = BOB_DOS;
-  path.active = true;
-  path.save();
+  updateSubregistry(
+    BOB_DOS,
+    Address.fromString(USER_REGISTRY),
+    subregistryUpdated(123)
+  );
 
+  assert.entityCount("TokenToDomain", 3);
+  assert.fieldEquals("Domain", SUB_BOB_DOS, "name", "sub.bob.dos");
+  assert.fieldEquals("Domain", SUB_BOB_DOS, "owner", OWNER);
+});
+
+test("shared registry events retain one history row per parent context", () => {
+  handleLabelRegistered(registration(123));
+  activateUserRegistry();
+  handleUserRegistryLabelRegistered(userRegistryRegistration(456));
+
+  let bob = new Domain(BOB_DOS);
+  bob.name = "bob.dos";
+  bob.labelName = "bob";
+  bob.owner = OWNER;
+  bob.isMigrated = true;
+  bob.createdAt = BigInt.fromI32(1);
+  bob.subdomainCount = 0;
+  bob.storedOffchain = false;
+  bob.resolvedWithWildcard = false;
+  bob.save();
+  updateSubregistry(
+    BOB_DOS,
+    Address.fromString(USER_REGISTRY),
+    subregistryUpdated(123)
+  );
+
+  handleUserRegistryTransferSingle(userRegistryTransfer(456));
   let bobContext = new DataSourceContext();
   bobContext.setBytes("parentNode", Bytes.fromHexString(BOB_DOS));
   dataSourceMock.setContext(bobContext);
-  handleUserRegistryLabelRegistered(userRegistryRegistration(456));
+  handleUserRegistryTransferSingle(userRegistryTransfer(456));
 
-  assert.entityCount("TokenToDomain", 3);
+  assert.entityCount("Transfer", 2);
+  assert.fieldEquals("Domain", SUB_ALICE_DOS, "owner", NEW_OWNER);
+  assert.fieldEquals("Domain", SUB_BOB_DOS, "owner", NEW_OWNER);
 });
 
 test("a user-registry unregistration retires the scoped token mapping", () => {

@@ -21,6 +21,7 @@ import {LibLabel} from "~src/utils/LibLabel.sol";
 /// @notice Deploys a standard wrapped-native WDOS token and the complete `.dos` ENSv2 stack.
 contract DeployDOSTestnet is DeployDOS {
     string internal constant BENS_SMOKE_LABEL = "bens-smoke";
+    uint64 internal constant BENS_SMOKE_LIFETIME = 10 * 365 days;
     /// @notice Contracts produced by the DOS testnet deployment profile.
     struct TestnetDeployment {
         WrappedDOS wdos;
@@ -76,7 +77,7 @@ contract DeployDOSTestnet is DeployDOS {
             IRegistry(address(0)),
             address(0),
             0,
-            type(uint64).max
+            uint64(block.timestamp + BENS_SMOKE_LIFETIME)
         );
         registry.revokeRootRoles(RegistryRolesLib.ROLE_REGISTRAR, initialOwner);
     }

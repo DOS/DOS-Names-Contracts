@@ -412,5 +412,5 @@ export function handleSubregistryUpdated(event: SubregistryUpdatedEvent): void {
   if (node === null || Domain.load(node) === null) {
     return;
   }
-  updateSubregistry(node, event.params.subregistry);
+  updateSubregistry(node, event.params.subregistry, event);
 }

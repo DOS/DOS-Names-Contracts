@@ -105,6 +105,11 @@ contract WrappedDOSTest is Test {
         assertTrue(deployment.names.rootRegistry.roles(dosTokenId, protocolOwner) != 0);
         assertTrue(deployment.names.rootRegistry.roles(reverseTokenId, protocolOwner) != 0);
         assertEq(deployment.names.dosRegistry.ownerOf(smokeTokenId), protocolOwner);
+        assertLe(
+            deployment.names.dosRegistry.getExpiry(smokeTokenId),
+            253402300799,
+            "smoke expiry must remain BENS/PostgreSQL timestamp-safe"
+        );
 
         vm.expectRevert();
         vm.prank(address(deployer));

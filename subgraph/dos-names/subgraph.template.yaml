@@ -4,7 +4,7 @@ schema:
   file: ./schema.graphql
 dataSources:
   # DOSTLDRegistry (PermissionedRegistry) - .dos TLD registry
-  # Emits: NameRegistered, ResolverUpdated, ExpiryUpdated, SubregistryUpdated, TransferSingle
+  # Emits: NameRegistered, ResolverUpdated, ExpiryUpdated, SubregistryUpdated, ERC1155 transfers
   - kind: ethereum/contract
     name: DOSTLDRegistry
     network: dos-testnet
@@ -21,6 +21,9 @@ dataSources:
         - Domain
         - Account
         - Registration
+        - RegistryChild
+        - RegistryChildToken
+        - RegistrySource
       abis:
         - name: PermissionedRegistry
           file: ./abis/PermissionedRegistry.json
@@ -125,7 +128,10 @@ templates:
         - Domain
         - Account
         - Registration
+        - RegistryChild
+        - RegistryChildToken
         - RegistryPath
+        - RegistrySource
       abis:
         - name: PermissionedRegistry
           file: ./abis/PermissionedRegistry.json

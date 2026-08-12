@@ -318,6 +318,35 @@ type RegistryPath @entity {
   active: Boolean!
 }
 
+"Tracks the linked list of known children for one dynamic ENSv2 registry"
+type RegistrySource @entity {
+  id: ID!
+  registry: Bytes!
+  firstChild: RegistryChild
+}
+
+"Stores current child state so a registry attached to another parent can be backfilled"
+type RegistryChild @entity {
+  id: ID!
+  source: RegistrySource!
+  tokenId: BigInt!
+  labelName: String!
+  labelhash: Bytes!
+  owner: Bytes!
+  expiryDate: BigInt!
+  resolver: Bytes!
+  subregistry: Bytes!
+  active: Boolean!
+  createdAt: BigInt!
+  nextChild: RegistryChild
+}
+
+"Maps a dynamic registry's current ERC1155 token ID to its stable child snapshot"
+type RegistryChildToken @entity {
+  id: ID!
+  child: RegistryChild!
+}
+
 "Tracks resolver addresses already registered as dynamic data sources"
 type ResolverSource @entity {
   id: ID!
