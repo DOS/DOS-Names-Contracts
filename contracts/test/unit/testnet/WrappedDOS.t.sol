@@ -18,9 +18,11 @@ import {WrappedDOS} from "~src/testnet/WrappedDOS.sol";
 contract WrappedDOSTest is Test {
     bytes32 internal constant LABEL_REGISTERED_TOPIC =
         keccak256("LabelRegistered(uint256,bytes32,string,address,uint64,address)");
-    bytes32 internal constant RESOLVER_UPDATED_TOPIC = keccak256("ResolverUpdated(uint256,address,address)");
+    bytes32 internal constant RESOLVER_UPDATED_TOPIC =
+        keccak256("ResolverUpdated(uint256,address,address)");
     bytes32 internal constant ADDR_CHANGED_TOPIC = keccak256("AddrChanged(bytes32,address)");
-    bytes32 internal constant ADDRESS_CHANGED_TOPIC = keccak256("AddressChanged(bytes32,uint256,bytes)");
+    bytes32 internal constant ADDRESS_CHANGED_TOPIC =
+        keccak256("AddressChanged(bytes32,uint256,bytes)");
     address internal constant TESTNET_DEPLOYER = 0x99999e454138f6be73E2bE82c890bc5765749999;
     address internal constant PROTOCOL_OWNER = 0x310Bc061214ee89aF5CfB28a6ebF96c5436fa3CD;
     WrappedDOS internal wdos;
@@ -185,7 +187,11 @@ contract WrappedDOSTest is Test {
         vm.chainId(3939);
 
         vm.expectRevert(
-            abi.encodeWithSelector(DeployDOSTestnet.UnexpectedDeployer.selector, vm.addr(privateKey), TESTNET_DEPLOYER)
+            abi.encodeWithSelector(
+                DeployDOSTestnet.UnexpectedDeployer.selector,
+                vm.addr(privateKey),
+                TESTNET_DEPLOYER
+            )
         );
         deployer.run();
     }
@@ -203,7 +209,9 @@ contract WrappedDOSTest is Test {
         vm.chainId(7979);
         vm.deal(TESTNET_DEPLOYER, 1 ether);
 
-        vm.expectRevert(abi.encodeWithSelector(DeployDOSTestnet.UnexpectedChain.selector, 7979, 3939));
+        vm.expectRevert(
+            abi.encodeWithSelector(DeployDOSTestnet.UnexpectedChain.selector, 7979, 3939)
+        );
         deployer.preflight(TESTNET_DEPLOYER, PROTOCOL_OWNER, PROTOCOL_OWNER);
     }
 
@@ -213,7 +221,13 @@ contract WrappedDOSTest is Test {
         vm.deal(TESTNET_DEPLOYER, 1 ether);
 
         address wrongOwner = makeAddr("wrongOwner");
-        vm.expectRevert(abi.encodeWithSelector(DeployDOSTestnet.UnexpectedOwner.selector, wrongOwner, PROTOCOL_OWNER));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                DeployDOSTestnet.UnexpectedOwner.selector,
+                wrongOwner,
+                PROTOCOL_OWNER
+            )
+        );
         deployer.preflight(TESTNET_DEPLOYER, wrongOwner, PROTOCOL_OWNER);
     }
 
@@ -224,7 +238,11 @@ contract WrappedDOSTest is Test {
 
         address wrongBeneficiary = makeAddr("wrongBeneficiary");
         vm.expectRevert(
-            abi.encodeWithSelector(DeployDOSTestnet.UnexpectedBeneficiary.selector, wrongBeneficiary, PROTOCOL_OWNER)
+            abi.encodeWithSelector(
+                DeployDOSTestnet.UnexpectedBeneficiary.selector,
+                wrongBeneficiary,
+                PROTOCOL_OWNER
+            )
         );
         deployer.preflight(TESTNET_DEPLOYER, PROTOCOL_OWNER, wrongBeneficiary);
     }
@@ -235,7 +253,11 @@ contract WrappedDOSTest is Test {
         vm.deal(TESTNET_DEPLOYER, 1 ether - 1);
 
         vm.expectRevert(
-            abi.encodeWithSelector(DeployDOSTestnet.InsufficientDeploymentBalance.selector, 1 ether - 1, 1 ether)
+            abi.encodeWithSelector(
+                DeployDOSTestnet.InsufficientDeploymentBalance.selector,
+                1 ether - 1,
+                1 ether
+            )
         );
         deployer.preflight(TESTNET_DEPLOYER, PROTOCOL_OWNER, PROTOCOL_OWNER);
     }

@@ -97,18 +97,26 @@ contract DeployDOSTestnet is DeployDOS {
     }
 
     /// @dev Creates one stable forward and reverse record used by Graph Node and BENS acceptance gates.
-    function _registerBensSmokeName(Deployment memory deployment, address initialOwner, address owner, uint256 chainId)
+    function _registerBensSmokeName(
+        Deployment memory deployment,
+        address initialOwner,
+        address owner,
+        uint256 chainId
+    )
         internal
     {
         bytes[] memory setters = new bytes[](0);
-        PermissionedResolver resolver = PermissionedResolver(
-            deployment.verifiableFactory
-                .deployProxy(
+        PermissionedResolver resolver =
+            PermissionedResolver(
+                deployment.verifiableFactory.deployProxy(
                     address(deployment.permissionedResolverImplementation),
                     1,
-                    abi.encodeCall(PermissionedResolver.initialize, (initialOwner, EACBaseRolesLib.ALL_ROLES, setters))
+                    abi.encodeCall(
+                        PermissionedResolver.initialize,
+                        (initialOwner, EACBaseRolesLib.ALL_ROLES, setters)
+                    )
                 )
-        );
+            );
         bytes32 node = NameCoder.namehash(NameCoder.encode(BENS_SMOKE_NAME), 0);
 
         PermissionedRegistry registry = deployment.dosRegistry;
