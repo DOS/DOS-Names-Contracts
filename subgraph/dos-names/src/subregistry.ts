@@ -32,8 +32,6 @@ import {
   tokenIdToHex,
 } from "./utils";
 
-const MAX_REGISTRY_DEPTH = 32;
-
 function childTokenId(registry: Address, tokenId: BigInt): string {
   return registry.toHexString().concat("-").concat(tokenIdToHex(tokenId));
 }
@@ -275,55 +273,65 @@ function retireDomain(node: string, timestamp: BigInt): void {
   }
 }
 
-function retireRegistryPath(
-  parentNode: string,
-  registry: Address,
-  event: ethereum.Event,
-  ancestors: string[],
-  depth: i32
-): void {
-  assert(
-    depth < MAX_REGISTRY_DEPTH,
-    "ENSv2 registry nesting exceeds the supported depth"
-  );
-  let registryAddress = registry.toHexString();
-  if (ancestors.includes(registryAddress)) {
-    return;
+function nextChildId(childId: string): string | null {
+  let child = RegistryChild.load(childId);
+  assert(child !== null, "ENSv2 registry child list is corrupt");
+  return (child as RegistryChild).nextChild;
+}
+
+function assertAcyclicChildList(firstChild: string | null): void {
+  let slow = firstChild;
+  let fast = firstChild;
+  while (fast !== null) {
+    fast = nextChildId(fast as string);
+    if (fast === null) {
+      return;
+    }
+    fast = nextChildId(fast as string);
+    slow = nextChildId(slow as string);
+    assert(slow != fast, "ENSv2 registry child list contains a cycle");
   }
-  let nextAncestors = ancestors.concat([registryAddress]);
-  let source = RegistrySource.load(registryAddress);
-  let childId: string | null = source === null ? null : source.firstChild;
-  let visitedChildren: string[] = [];
-  while (childId !== null) {
-    let currentId = childId as string;
-    assert(
-      !visitedChildren.includes(currentId),
-      "ENSv2 registry child list contains a cycle"
-    );
-    visitedChildren.push(currentId);
-    let child = RegistryChild.load(currentId);
-    if (child === null) {
+}
+
+function retireRegistryTree(
+  rootParent: string,
+  rootRegistry: Address,
+  event: ethereum.Event
+): void {
+  let parents = [rootParent];
+  let registries = [rootRegistry.toHexString()];
+  while (parents.length > 0) {
+    let parentNode = parents.pop();
+    let registryAddress = registries.pop();
+    if (parentNode === null || registryAddress === null) {
       break;
     }
-    let node = childNode(parentNode, child);
-    let nestedPath = RegistryPath.load(node);
-    if (nestedPath !== null && nestedPath.active) {
-      retireRegistryPath(
-        node,
-        Address.fromBytes(nestedPath.registry),
-        event,
-        nextAncestors,
-        depth + 1
+    let source = RegistrySource.load(registryAddress as string);
+    let childId: string | null = source === null ? null : source.firstChild;
+    assertAcyclicChildList(childId);
+    while (childId !== null) {
+      let child = RegistryChild.load(childId as string);
+      assert(child !== null, "ENSv2 registry child list is corrupt");
+      let currentChild = child as RegistryChild;
+      let node = childNode(parentNode as string, currentChild);
+      let nestedPath = RegistryPath.load(node);
+      if (nestedPath !== null && nestedPath.active) {
+        parents.push(node);
+        registries.push(nestedPath.registry.toHexString());
+        nestedPath.active = false;
+        nestedPath.save();
+      }
+      retireDomain(node, event.block.timestamp);
+      store.remove(
+        "TokenToDomain",
+        scopedTokenId(
+          Address.fromString(registryAddress as string),
+          parentNode as string,
+          currentChild.tokenId
+        )
       );
-      nestedPath.active = false;
-      nestedPath.save();
+      childId = currentChild.nextChild;
     }
-    retireDomain(node, event.block.timestamp);
-    store.remove(
-      "TokenToDomain",
-      scopedTokenId(registry, parentNode, child.tokenId)
-    );
-    childId = child.nextChild;
   }
 }
 
@@ -354,26 +362,14 @@ export function updateSubregistry(
   parentNode: string,
   registry: Address,
   event: ethereum.Event,
-  ancestors: string[],
-  depth: i32
+  ancestors: string[]
 ): void {
-  assert(
-    depth < MAX_REGISTRY_DEPTH,
-    "ENSv2 registry nesting exceeds the supported depth"
-  );
-  let path = RegistryPath.load(parentNode);
   let registryAddress = registry.toHexString();
-
   if (registryAddress == EMPTY_ADDRESS) {
+    let path = RegistryPath.load(parentNode);
     if (path !== null) {
       if (path.active) {
-        retireRegistryPath(
-          parentNode,
-          Address.fromBytes(path.registry),
-          event,
-          ancestors,
-          depth
-        );
+        retireRegistryTree(parentNode, Address.fromBytes(path.registry), event);
       }
       path.active = false;
       path.save();
@@ -381,72 +377,90 @@ export function updateSubregistry(
     return;
   }
 
-  if (ancestors.includes(registryAddress)) {
-    return;
-  }
-  if (
-    path !== null &&
-    path.active &&
-    path.registry.toHexString() != registryAddress
-  ) {
-    retireRegistryPath(
-      parentNode,
-      Address.fromBytes(path.registry),
-      event,
-      ancestors,
-      depth
-    );
-    path.active = false;
-    path.save();
-  }
-
-  let requiresSource =
-    path === null || path.registry.toHexString() != registryAddress;
-  if (path === null) {
-    path = new RegistryPath(parentNode);
-    path.parentDomain = parentNode;
-  }
-  path.registry = registry;
-  path.active = true;
-  path.save();
-
-  if (requiresSource) {
-    let context = new DataSourceContext();
-    context.setBytes("parentNode", Bytes.fromHexString(parentNode));
-    UserRegistryTemplate.createWithContext(registry, context);
-  }
-
-  let source = RegistrySource.load(registryAddress);
-  let childId: string | null = null;
-  if (source !== null) {
-    childId = source.firstChild;
-  }
-  let visitedChildren: string[] = [];
-  let nextAncestors = ancestors.concat([registryAddress]);
-  while (childId !== null) {
-    let currentId = childId as string;
-    assert(
-      !visitedChildren.includes(currentId),
-      "ENSv2 registry child list contains a cycle"
-    );
-    visitedChildren.push(currentId);
-    let child = RegistryChild.load(currentId);
-    if (child === null) {
+  let parents = [parentNode];
+  let registries = [registryAddress];
+  let ancestryPaths = [ancestors.join(",")];
+  while (parents.length > 0) {
+    let currentParent = parents.pop();
+    let currentRegistry = registries.pop();
+    let ancestryPath = ancestryPaths.pop();
+    if (
+      currentParent === null ||
+      currentRegistry === null ||
+      ancestryPath === null
+    ) {
       break;
     }
-    let node = materializeRegistryChild(parentNode, registry, child, event);
+    let currentAncestors =
+      (ancestryPath as string).length == 0
+        ? new Array<string>()
+        : (ancestryPath as string).split(",");
+    if (currentAncestors.includes(currentRegistry as string)) {
+      continue;
+    }
+
+    let path = RegistryPath.load(currentParent as string);
     if (
-      node !== null &&
-      child.subregistry.toHexString() != EMPTY_ADDRESS
+      path !== null &&
+      path.active &&
+      path.registry.toHexString() != (currentRegistry as string)
     ) {
-      updateSubregistry(
-        node as string,
-        Address.fromBytes(child.subregistry),
-        event,
-        nextAncestors,
-        depth + 1
+      retireRegistryTree(
+        currentParent as string,
+        Address.fromBytes(path.registry),
+        event
+      );
+      path.active = false;
+      path.save();
+    }
+
+    let requiresSource =
+      path === null ||
+      path.registry.toHexString() != (currentRegistry as string);
+    if (path === null) {
+      path = new RegistryPath(currentParent as string);
+      path.parentDomain = currentParent as string;
+    }
+    path.registry = Address.fromString(currentRegistry as string);
+    path.active = true;
+    path.save();
+
+    let nextAncestors = currentAncestors.concat([currentRegistry as string]);
+    if (requiresSource) {
+      let context = new DataSourceContext();
+      context.setBytes(
+        "parentNode",
+        Bytes.fromHexString(currentParent as string)
+      );
+      context.setString("registryAncestors", nextAncestors.join(","));
+      UserRegistryTemplate.createWithContext(
+        Address.fromString(currentRegistry as string),
+        context
       );
     }
-    childId = child.nextChild;
+
+    let source = RegistrySource.load(currentRegistry as string);
+    let childId: string | null = source === null ? null : source.firstChild;
+    assertAcyclicChildList(childId);
+    while (childId !== null) {
+      let child = RegistryChild.load(childId as string);
+      assert(child !== null, "ENSv2 registry child list is corrupt");
+      let currentChild = child as RegistryChild;
+      let node = materializeRegistryChild(
+        currentParent as string,
+        Address.fromString(currentRegistry as string),
+        currentChild,
+        event
+      );
+      if (
+        node !== null &&
+        currentChild.subregistry.toHexString() != EMPTY_ADDRESS
+      ) {
+        parents.push(node as string);
+        registries.push(currentChild.subregistry.toHexString());
+        ancestryPaths.push(nextAncestors.join(","));
+      }
+      childId = currentChild.nextChild;
+    }
   }
 }

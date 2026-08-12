@@ -62,6 +62,15 @@ function contextEventID(event: ethereum.Event): string {
     .concat(dataSource.context().getBytes("parentNode").toHexString());
 }
 
+function contextRegistryAncestors(registry: Address): string[] {
+  let context = dataSource.context();
+  if (!context.isSet("registryAncestors")) {
+    return [registry.toHexString()];
+  }
+  let encoded = context.getString("registryAncestors");
+  return encoded.length == 0 ? new Array<string>() : encoded.split(",");
+}
+
 export function handleUserRegistryLabelRegistered(event: LabelRegisteredEvent): void {
   let label = event.params.label;
   if (!checkValidLabel(label)) {
@@ -305,8 +314,7 @@ export function handleUserRegistrySubregistryUpdated(event: SubregistryUpdatedEv
     node,
     event.params.subregistry,
     event,
-    [event.address.toHexString()],
-    0
+    contextRegistryAncestors(event.address)
   );
 }
 
@@ -337,8 +345,7 @@ export function handleUserRegistryLabelUnregistered(event: LabelUnregisteredEven
     mapping.domain,
     Address.fromString(EMPTY_ADDRESS),
     event,
-    [event.address.toHexString()],
-    0
+    contextRegistryAncestors(event.address)
   );
   let zeroAccount = createOrLoadAccount(EMPTY_ADDRESS);
   domain.owner = zeroAccount.id;
