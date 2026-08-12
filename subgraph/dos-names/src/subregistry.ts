@@ -32,6 +32,9 @@ import {
   tokenIdToHex,
 } from "./utils";
 
+const MAX_REGISTRY_DEPTH = 32;
+const MAX_REGISTRY_CHILDREN = 10000;
+
 function childTokenId(registry: Address, tokenId: BigInt): string {
   return registry.toHexString().concat("-").concat(tokenIdToHex(tokenId));
 }
@@ -218,7 +221,11 @@ export function materializeRegistryChild(
   }
 
   let domainEvent = new NewOwner(
-    createEventID(event).concat("-").concat(parentId)
+    createEventID(event)
+      .concat("-")
+      .concat(parentId)
+      .concat("-")
+      .concat(child.id)
   );
   domainEvent.blockNumber = event.block.number.toI32();
   domainEvent.transactionID = event.transaction.hash;
@@ -227,6 +234,92 @@ export function materializeRegistryChild(
   domainEvent.owner = account.id;
   domainEvent.save();
   return node;
+}
+
+function childNode(parentId: string, child: RegistryChild): string {
+  return crypto
+    .keccak256(
+      concat(
+        changetype<ByteArray>(Bytes.fromHexString(parentId)),
+        child.labelhash
+      )
+    )
+    .toHexString();
+}
+
+function retireDomain(node: string, timestamp: BigInt): void {
+  let domain = Domain.load(node);
+  if (domain === null) {
+    return;
+  }
+  let zeroAccount = createOrLoadAccount(EMPTY_ADDRESS);
+  domain.owner = zeroAccount.id;
+  domain.registrant = zeroAccount.id;
+  domain.wrappedOwner = zeroAccount.id;
+  domain.expiryDate = timestamp;
+  domain.tokenId = null;
+  domain.resolver = null;
+  domain.resolvedAddress = null;
+  domain.save();
+
+  let wrapped = WrappedDomain.load(node);
+  if (wrapped !== null) {
+    wrapped.owner = zeroAccount.id;
+    wrapped.expiryDate = timestamp;
+    wrapped.save();
+  }
+  let registration = Registration.load(node);
+  if (registration !== null) {
+    registration.registrant = zeroAccount.id;
+    registration.expiryDate = timestamp;
+    registration.save();
+  }
+}
+
+function retireRegistryPath(
+  parentNode: string,
+  registry: Address,
+  event: ethereum.Event,
+  ancestors: string[],
+  depth: i32
+): void {
+  if (depth >= MAX_REGISTRY_DEPTH) {
+    return;
+  }
+  let registryAddress = registry.toHexString();
+  if (ancestors.includes(registryAddress)) {
+    return;
+  }
+  let nextAncestors = ancestors.concat([registryAddress]);
+  let source = RegistrySource.load(registryAddress);
+  let childId: string | null = source === null ? null : source.firstChild;
+  let visitedChildren = 0;
+  while (childId !== null && visitedChildren < MAX_REGISTRY_CHILDREN) {
+    let child = RegistryChild.load(childId as string);
+    if (child === null) {
+      break;
+    }
+    let node = childNode(parentNode, child);
+    let nestedPath = RegistryPath.load(node);
+    if (nestedPath !== null && nestedPath.active) {
+      retireRegistryPath(
+        node,
+        Address.fromBytes(nestedPath.registry),
+        event,
+        nextAncestors,
+        depth + 1
+      );
+      nestedPath.active = false;
+      nestedPath.save();
+    }
+    retireDomain(node, event.block.timestamp);
+    store.remove(
+      "TokenToDomain",
+      scopedTokenId(registry, parentNode, child.tokenId)
+    );
+    childId = child.nextChild;
+    visitedChildren += 1;
+  }
 }
 
 export function attachResolver(domain: Domain, resolverAddress: Address): void {
@@ -255,17 +348,46 @@ export function attachResolver(domain: Domain, resolverAddress: Address): void {
 export function updateSubregistry(
   parentNode: string,
   registry: Address,
-  event: ethereum.Event
+  event: ethereum.Event,
+  ancestors: string[]
 ): void {
   let path = RegistryPath.load(parentNode);
   let registryAddress = registry.toHexString();
 
   if (registryAddress == EMPTY_ADDRESS) {
     if (path !== null) {
+      if (path.active) {
+        retireRegistryPath(
+          parentNode,
+          Address.fromBytes(path.registry),
+          event,
+          ancestors,
+          0
+        );
+      }
       path.active = false;
       path.save();
     }
     return;
+  }
+
+  if (ancestors.includes(registryAddress)) {
+    return;
+  }
+  if (
+    path !== null &&
+    path.active &&
+    path.registry.toHexString() != registryAddress
+  ) {
+    retireRegistryPath(
+      parentNode,
+      Address.fromBytes(path.registry),
+      event,
+      ancestors,
+      0
+    );
+    path.active = false;
+    path.save();
   }
 
   let requiresSource =
@@ -289,7 +411,9 @@ export function updateSubregistry(
   if (source !== null) {
     childId = source.firstChild;
   }
-  while (childId !== null) {
+  let visitedChildren = 0;
+  let nextAncestors = ancestors.concat([registryAddress]);
+  while (childId !== null && visitedChildren < MAX_REGISTRY_CHILDREN) {
     let currentId = childId as string;
     let child = RegistryChild.load(currentId);
     if (child === null) {
@@ -300,8 +424,14 @@ export function updateSubregistry(
       node !== null &&
       child.subregistry.toHexString() != EMPTY_ADDRESS
     ) {
-      updateSubregistry(node as string, Address.fromBytes(child.subregistry), event);
+      updateSubregistry(
+        node as string,
+        Address.fromBytes(child.subregistry),
+        event,
+        nextAncestors
+      );
     }
     childId = child.nextChild;
+    visitedChildren += 1;
   }
 }

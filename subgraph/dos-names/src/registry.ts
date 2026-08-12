@@ -380,6 +380,7 @@ export function handleLabelUnregistered(event: LabelUnregisteredEvent): void {
     return;
   }
 
+  updateSubregistry(mapping.domain, Address.fromString(EMPTY_ADDRESS), event, []);
   let zeroAccount = createOrLoadAccount(EMPTY_ADDRESS);
   domain.owner = zeroAccount.id;
   domain.registrant = zeroAccount.id;
@@ -412,5 +413,5 @@ export function handleSubregistryUpdated(event: SubregistryUpdatedEvent): void {
   if (node === null || Domain.load(node) === null) {
     return;
   }
-  updateSubregistry(node, event.params.subregistry, event);
+  updateSubregistry(node, event.params.subregistry, event, []);
 }

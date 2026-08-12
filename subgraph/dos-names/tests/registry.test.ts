@@ -71,6 +71,10 @@ const BOB_DOS =
   "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const SUB_BOB_DOS =
   "0x7ee7b82ae369bf398c232f0c2b4def081af73b8ed707d68cce8a3f685b0c07f7";
+const SECOND_LABEL_HASH =
+  "0x45318970bfff215a328f56895f3a97d4f276a44c24c135c12c37867a1f667b8a";
+const SECOND_BOB_DOS =
+  "0xc2c4870365c617dfcbdc325faf5901634da2c66d1469f96233dd050284c15481";
 
 function registration(tokenId: i32): LabelRegistered {
   let mock = newMockEvent();
@@ -306,6 +310,14 @@ function batchTransfer(tokenIds: i32[], values: i32[]): TransferBatch {
 }
 
 function userRegistryRegistration(tokenId: i32): UserRegistryLabelRegistered {
+  return userRegistryRegistrationFor(tokenId, "sub", SUB_LABEL_HASH);
+}
+
+function userRegistryRegistrationFor(
+  tokenId: i32,
+  label: string,
+  labelHash: string
+): UserRegistryLabelRegistered {
   let mock = newMockEvent();
   mock.address = Address.fromString(USER_REGISTRY);
   let event = new UserRegistryLabelRegistered(
@@ -325,9 +337,9 @@ function userRegistryRegistration(tokenId: i32): UserRegistryLabelRegistered {
     ),
     new ethereum.EventParam(
       "labelHash",
-      ethereum.Value.fromFixedBytes(Bytes.fromHexString(SUB_LABEL_HASH))
+      ethereum.Value.fromFixedBytes(Bytes.fromHexString(labelHash))
     ),
-    new ethereum.EventParam("label", ethereum.Value.fromString("sub")),
+    new ethereum.EventParam("label", ethereum.Value.fromString(label)),
     new ethereum.EventParam(
       "owner",
       ethereum.Value.fromAddress(Address.fromString(OWNER))
@@ -558,7 +570,10 @@ function userRegistryTokenRegenerated(
   return event;
 }
 
-function userRegistrySubregistryUpdated(tokenId: i32): UserRegistrySubregistryUpdated {
+function userRegistrySubregistryUpdated(
+  tokenId: i32,
+  registry: string = NESTED_REGISTRY
+): UserRegistrySubregistryUpdated {
   let mock = newMockEvent();
   mock.address = Address.fromString(USER_REGISTRY);
   mock.logIndex = BigInt.fromI32(1);
@@ -579,7 +594,7 @@ function userRegistrySubregistryUpdated(tokenId: i32): UserRegistrySubregistryUp
     ),
     new ethereum.EventParam(
       "subregistry",
-      ethereum.Value.fromAddress(Address.fromString(NESTED_REGISTRY))
+      ethereum.Value.fromAddress(Address.fromString(registry))
     ),
     new ethereum.EventParam(
       "sender",
@@ -683,7 +698,7 @@ test("detached user registries stop mutating their former parent path", () => {
   handleUserRegistryTransferSingle(userRegistryTransfer(456));
 
   assert.fieldEquals("RegistryPath", ALICE_DOS, "active", "false");
-  assert.fieldEquals("Domain", SUB_ALICE_DOS, "owner", OWNER);
+  assert.fieldEquals("Domain", SUB_ALICE_DOS, "owner", ZERO_ADDRESS);
 });
 
 test("detached registry sources retain current state for a later attachment", () => {
@@ -706,10 +721,11 @@ test("detached registry sources retain current state for a later attachment", ()
   updateSubregistry(
     BOB_DOS,
     Address.fromString(USER_REGISTRY),
-    subregistryUpdated(123)
+    subregistryUpdated(123),
+    []
   );
 
-  assert.fieldEquals("Domain", SUB_ALICE_DOS, "owner", OWNER);
+  assert.fieldEquals("Domain", SUB_ALICE_DOS, "owner", ZERO_ADDRESS);
   assert.fieldEquals("Domain", SUB_BOB_DOS, "owner", NEW_OWNER);
 });
 
@@ -731,12 +747,66 @@ test("attaching a shared registry backfills existing children for the new parent
   updateSubregistry(
     BOB_DOS,
     Address.fromString(USER_REGISTRY),
-    subregistryUpdated(123)
+    subregistryUpdated(123),
+    []
   );
 
   assert.entityCount("TokenToDomain", 3);
   assert.fieldEquals("Domain", SUB_BOB_DOS, "name", "sub.bob.dos");
   assert.fieldEquals("Domain", SUB_BOB_DOS, "owner", OWNER);
+});
+
+test("backfilling multiple children preserves each ownership event", () => {
+  handleLabelRegistered(registration(123));
+  activateUserRegistry();
+  handleUserRegistryLabelRegistered(userRegistryRegistration(456));
+  handleUserRegistryLabelRegistered(
+    userRegistryRegistrationFor(457, "second", SECOND_LABEL_HASH)
+  );
+
+  let bob = new Domain(BOB_DOS);
+  bob.name = "bob.dos";
+  bob.labelName = "bob";
+  bob.owner = OWNER;
+  bob.isMigrated = true;
+  bob.createdAt = BigInt.fromI32(1);
+  bob.subdomainCount = 0;
+  bob.storedOffchain = false;
+  bob.resolvedWithWildcard = false;
+  bob.save();
+  updateSubregistry(
+    BOB_DOS,
+    Address.fromString(USER_REGISTRY),
+    subregistryUpdated(123),
+    []
+  );
+
+  assert.fieldEquals("Domain", SUB_BOB_DOS, "owner", OWNER);
+  assert.fieldEquals("Domain", SECOND_BOB_DOS, "owner", OWNER);
+  assert.entityCount("NewOwner", 5);
+});
+
+test("self-linked subregistries fail closed without creating a cyclic path", () => {
+  handleLabelRegistered(registration(123));
+  activateUserRegistry();
+  handleUserRegistryLabelRegistered(userRegistryRegistration(456));
+
+  handleUserRegistrySubregistryUpdated(
+    userRegistrySubregistryUpdated(456, USER_REGISTRY)
+  );
+
+  assert.notInStore("RegistryPath", SUB_ALICE_DOS);
+});
+
+test("replacing a subregistry retires names from the old registry", () => {
+  handleLabelRegistered(registration(123));
+  activateUserRegistry();
+  handleUserRegistryLabelRegistered(userRegistryRegistration(456));
+
+  handleSubregistryUpdated(subregistryUpdated(123, NESTED_REGISTRY));
+
+  assert.fieldEquals("Domain", SUB_ALICE_DOS, "owner", ZERO_ADDRESS);
+  assert.fieldEquals("RegistryPath", ALICE_DOS, "registry", NESTED_REGISTRY);
 });
 
 test("shared registry events retain one history row per parent context", () => {
@@ -757,7 +827,8 @@ test("shared registry events retain one history row per parent context", () => {
   updateSubregistry(
     BOB_DOS,
     Address.fromString(USER_REGISTRY),
-    subregistryUpdated(123)
+    subregistryUpdated(123),
+    []
   );
 
   handleUserRegistryTransferSingle(userRegistryTransfer(456));
@@ -789,6 +860,17 @@ test("a user-registry unregistration retires the scoped token mapping", () => {
       .concat(ALICE_DOS)
       .concat("-0x00000000000000000000000000000000000000000000000000000000000001c8")
   );
+});
+
+test("unregistering a parent retires its nested registry path", () => {
+  handleLabelRegistered(registration(123));
+  activateUserRegistry();
+  handleUserRegistryLabelRegistered(userRegistryRegistration(456));
+  handleUserRegistrySubregistryUpdated(userRegistrySubregistryUpdated(456));
+
+  handleUserRegistryLabelUnregistered(userRegistryLabelUnregistered(456));
+
+  assert.fieldEquals("RegistryPath", SUB_ALICE_DOS, "active", "false");
 });
 
 test("a user-registry resolver is attached to the subname and dynamically indexed", () => {

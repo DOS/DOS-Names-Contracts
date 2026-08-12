@@ -301,7 +301,12 @@ export function handleUserRegistrySubregistryUpdated(event: SubregistryUpdatedEv
     return;
   }
 
-  updateSubregistry(node, event.params.subregistry, event);
+  updateSubregistry(
+    node,
+    event.params.subregistry,
+    event,
+    [event.address.toHexString()]
+  );
 }
 
 export function handleUserRegistryLabelUnregistered(event: LabelUnregisteredEvent): void {
@@ -327,6 +332,12 @@ export function handleUserRegistryLabelUnregistered(event: LabelUnregisteredEven
     return;
   }
 
+  updateSubregistry(
+    mapping.domain,
+    Address.fromString(EMPTY_ADDRESS),
+    event,
+    [event.address.toHexString()]
+  );
   let zeroAccount = createOrLoadAccount(EMPTY_ADDRESS);
   domain.owner = zeroAccount.id;
   domain.registrant = zeroAccount.id;
