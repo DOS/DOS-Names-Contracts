@@ -1,0 +1,181 @@
+specVersion: 0.0.5
+description: DOS Name Service (.dos) - ENSv2 fork on DOS Chain
+schema:
+  file: ./schema.graphql
+dataSources:
+  # DOSTLDRegistry (PermissionedRegistry) - .dos TLD registry
+  # Emits: NameRegistered, ResolverUpdated, ExpiryUpdated, SubregistryUpdated, TransferSingle
+  - kind: ethereum/contract
+    name: DOSTLDRegistry
+    network: dos-testnet
+    source:
+      abi: PermissionedRegistry
+      address: "__DOS_REGISTRY_ADDRESS__"
+      startBlock: __START_BLOCK__
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      file: ./src/registry.ts
+      entities:
+        - Domain
+        - Account
+        - Registration
+      abis:
+        - name: PermissionedRegistry
+          file: ./abis/PermissionedRegistry.json
+      eventHandlers:
+        - event: LabelRegistered(indexed uint256,indexed bytes32,string,address,uint64,indexed address)
+          handler: handleLabelRegistered
+        - event: ResolverUpdated(indexed uint256,indexed address,indexed address)
+          handler: handleResolverUpdated
+        - event: ExpiryUpdated(indexed uint256,indexed uint64,indexed address)
+          handler: handleExpiryUpdated
+        - event: TransferSingle(indexed address,indexed address,indexed address,uint256,uint256)
+          handler: handleTransferSingle
+        - event: TokenRegenerated(indexed uint256,indexed uint256)
+          handler: handleTokenRegenerated
+        - event: SubregistryUpdated(indexed uint256,indexed address,indexed address)
+          handler: handleSubregistryUpdated
+        - event: LabelUnregistered(indexed uint256,indexed address)
+          handler: handleLabelUnregistered
+
+  # DOSRegistrar - commit-reveal registrar for .dos names
+  # Emits: NameRegistered (with cost info), NameRenewed
+  - kind: ethereum/contract
+    name: DOSRegistrar
+    network: dos-testnet
+    source:
+      abi: DOSRegistrar
+      address: "__DOS_REGISTRAR_ADDRESS__"
+      startBlock: __START_BLOCK__
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      file: ./src/registrar.ts
+      entities:
+        - Registration
+        - NameRegistered
+        - NameRenewed
+      abis:
+        - name: DOSRegistrar
+          file: ./abis/DOSRegistrar.json
+      eventHandlers:
+        - event: NameRegistered(indexed uint256,string,address,address,address,uint64,address,indexed bytes32,uint256,uint256)
+          handler: handleNameRegisteredByRegistrar
+        - event: NameRenewed(indexed uint256,string,uint64,uint64,address,indexed bytes32,uint256)
+          handler: handleNameRenewedByRegistrar
+
+  # PermissionedResolver proxy - resolver events
+  # Emits: AddrChanged, AddressChanged, TextChanged, ContenthashChanged, etc.
+  - kind: ethereum/contract
+    name: Resolver
+    network: dos-testnet
+    source:
+      abi: PermissionedResolver
+      address: "__PERMISSIONED_RESOLVER_IMPLEMENTATION_ADDRESS__"
+      startBlock: __START_BLOCK__
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      file: ./src/resolver.ts
+      entities:
+        - Resolver
+        - AddrChanged
+        - MulticoinAddrChanged
+        - TextChanged
+        - ContenthashChanged
+      abis:
+        - name: PermissionedResolver
+          file: ./abis/PermissionedResolver.json
+      eventHandlers:
+        - event: AddrChanged(indexed bytes32,address)
+          handler: handleAddrChanged
+        - event: AddressChanged(indexed bytes32,uint256,bytes)
+          handler: handleMulticoinAddrChanged
+        - event: TextChanged(indexed bytes32,indexed string,string,string)
+          handler: handleTextChanged
+        - event: ContenthashChanged(indexed bytes32,bytes)
+          handler: handleContentHashChanged
+        - event: NameChanged(indexed bytes32,string)
+          handler: handleNameChanged
+        - event: ABIChanged(indexed bytes32,indexed uint256)
+          handler: handleABIChanged
+        - event: PubkeyChanged(indexed bytes32,bytes32,bytes32)
+          handler: handlePubkeyChanged
+        - event: VersionChanged(indexed bytes32,uint64)
+          handler: handleVersionChanged
+
+templates:
+  - kind: ethereum/contract
+    name: UserRegistryTemplate
+    network: dos-testnet
+    source:
+      abi: PermissionedRegistry
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      file: ./src/userRegistry.ts
+      entities:
+        - Domain
+        - Account
+        - Registration
+        - RegistryPath
+      abis:
+        - name: PermissionedRegistry
+          file: ./abis/PermissionedRegistry.json
+      eventHandlers:
+        - event: LabelRegistered(indexed uint256,indexed bytes32,string,address,uint64,indexed address)
+          handler: handleUserRegistryLabelRegistered
+        - event: ResolverUpdated(indexed uint256,indexed address,indexed address)
+          handler: handleUserRegistryResolverUpdated
+        - event: ExpiryUpdated(indexed uint256,indexed uint64,indexed address)
+          handler: handleUserRegistryExpiryUpdated
+        - event: TransferSingle(indexed address,indexed address,indexed address,uint256,uint256)
+          handler: handleUserRegistryTransferSingle
+        - event: TokenRegenerated(indexed uint256,indexed uint256)
+          handler: handleUserRegistryTokenRegenerated
+        - event: SubregistryUpdated(indexed uint256,indexed address,indexed address)
+          handler: handleUserRegistrySubregistryUpdated
+        - event: LabelUnregistered(indexed uint256,indexed address)
+          handler: handleUserRegistryLabelUnregistered
+
+  - kind: ethereum/contract
+    name: ResolverTemplate
+    network: dos-testnet
+    source:
+      abi: PermissionedResolver
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      file: ./src/resolver.ts
+      entities:
+        - Resolver
+        - AddrChanged
+        - MulticoinAddrChanged
+        - TextChanged
+        - ContenthashChanged
+      abis:
+        - name: PermissionedResolver
+          file: ./abis/PermissionedResolver.json
+      eventHandlers:
+        - event: AddrChanged(indexed bytes32,address)
+          handler: handleAddrChanged
+        - event: AddressChanged(indexed bytes32,uint256,bytes)
+          handler: handleMulticoinAddrChanged
+        - event: TextChanged(indexed bytes32,indexed string,string,string)
+          handler: handleTextChanged
+        - event: ContenthashChanged(indexed bytes32,bytes)
+          handler: handleContentHashChanged
+        - event: NameChanged(indexed bytes32,string)
+          handler: handleNameChanged
+        - event: ABIChanged(indexed bytes32,indexed uint256)
+          handler: handleABIChanged
+        - event: PubkeyChanged(indexed bytes32,bytes32,bytes32)
+          handler: handlePubkeyChanged
+        - event: VersionChanged(indexed bytes32,uint64)
+          handler: handleVersionChanged

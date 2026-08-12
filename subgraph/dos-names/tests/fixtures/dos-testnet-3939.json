@@ -1,0 +1,9 @@
+{
+  "chainId": 3939,
+  "deploymentBlock": 0,
+  "contracts": {
+    "dosRegistry": "0x1111111111111111111111111111111111111111",
+    "dosRegistrar": "0x2222222222222222222222222222222222222222",
+    "permissionedResolverImplementation": "0x3333333333333333333333333333333333333333"
+  }
+}
