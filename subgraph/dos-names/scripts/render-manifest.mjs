@@ -26,6 +26,23 @@ export function validateDeployment(deployment) {
   ) {
     throw new Error("deploymentBlock must be a non-negative integer");
   }
+  if (
+    !Number.isInteger(deployment.finalDeploymentBlock) ||
+    deployment.finalDeploymentBlock < deployment.deploymentBlock
+  ) {
+    throw new Error(
+      "finalDeploymentBlock must be an integer at or after deploymentBlock",
+    );
+  }
+  if (deployment.smokeName !== "bens-smoke.dos") {
+    throw new Error("smokeName must be bens-smoke.dos");
+  }
+  if (!ADDRESS_PATTERN.test(deployment.smokeResolvedAddress ?? "")) {
+    throw new Error("smokeResolvedAddress must be an EVM address");
+  }
+  if (deployment.smokeResolvedAddress.toLowerCase() === ZERO_ADDRESS) {
+    throw new Error("smokeResolvedAddress must not be the zero address");
+  }
 
   for (const [contractName] of CONTRACT_PLACEHOLDERS) {
     const address = deployment.contracts?.[contractName];

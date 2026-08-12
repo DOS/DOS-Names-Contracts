@@ -6,6 +6,9 @@ import { renderManifest, validateDeployment } from "../scripts/render-manifest.m
 const VALID_DEPLOYMENT = {
   chainId: 3939,
   deploymentBlock: 68,
+  finalDeploymentBlock: 72,
+  smokeName: "bens-smoke.dos",
+  smokeResolvedAddress: "0x4444444444444444444444444444444444444444",
   contracts: {
     dosRegistry: "0x1111111111111111111111111111111111111111",
     dosRegistrar: "0x2222222222222222222222222222222222222222",
@@ -45,6 +48,27 @@ test("rejects a missing deployment block", () => {
   assert.throws(
     () => validateDeployment(deployment),
     /deploymentBlock must be a non-negative integer/,
+  );
+});
+
+test("rejects a final deployment block before the first deployment block", () => {
+  assert.throws(
+    () =>
+      validateDeployment({
+        ...VALID_DEPLOYMENT,
+        finalDeploymentBlock: VALID_DEPLOYMENT.deploymentBlock - 1,
+      }),
+    /finalDeploymentBlock must be an integer at or after deploymentBlock/,
+  );
+});
+
+test("rejects a missing smoke resolution address", () => {
+  const deployment = { ...VALID_DEPLOYMENT };
+  delete deployment.smokeResolvedAddress;
+
+  assert.throws(
+    () => validateDeployment(deployment),
+    /smokeResolvedAddress must be an EVM address/,
   );
 });
 

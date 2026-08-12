@@ -1,6 +1,9 @@
 {
   "chainId": 3939,
   "deploymentBlock": 0,
+  "finalDeploymentBlock": 1,
+  "smokeName": "bens-smoke.dos",
+  "smokeResolvedAddress": "0x4444444444444444444444444444444444444444",
   "contracts": {
     "dosRegistry": "0x1111111111111111111111111111111111111111",
     "dosRegistrar": "0x2222222222222222222222222222222222222222",
