@@ -93,6 +93,7 @@ export function handleLabelRegistered(event: LabelRegisteredEvent): void {
 
   // Create account
   let account = createOrLoadAccount(owner.toHexString());
+  let registryAccount = createOrLoadAccount(event.address.toHexString());
 
   // Create or load the .dos TLD domain (parent)
   let parentDomain = createOrLoadDomain(DOS_NODE);
@@ -116,7 +117,10 @@ export function handleLabelRegistered(event: LabelRegisteredEvent): void {
     domain.isMigrated = true;
   }
 
-  domain.owner = account.id;
+  // BENS follows the canonical ENS subgraph model for wrapped names:
+  // Domain.owner is the ERC1155 wrapper/registry contract while
+  // Domain.wrappedOwner and WrappedDomain.owner are the token holder.
+  domain.owner = registryAccount.id;
   domain.registrant = account.id;
   domain.parent = DOS_NODE;
   domain.labelName = label;
@@ -306,7 +310,6 @@ function applyOwnershipTransfer(
     return;
   }
 
-  domain.owner = account.id;
   domain.registrant = account.id;
   domain.wrappedOwner = account.id;
   domain.save();

@@ -178,6 +178,7 @@ export function materializeRegistryChild(
     .keccak256(concat(changetype<ByteArray>(parentNode), child.labelhash))
     .toHexString();
   let account = createOrLoadAccount(child.owner.toHexString());
+  let registryAccount = createOrLoadAccount(registry.toHexString());
   let domain = Domain.load(node);
   let isNew = domain === null;
   if (domain === null) {
@@ -189,7 +190,7 @@ export function materializeRegistryChild(
     domain.isMigrated = true;
   }
 
-  domain.owner = account.id;
+  domain.owner = registryAccount.id;
   domain.registrant = account.id;
   domain.wrappedOwner = account.id;
   domain.parent = parentId;

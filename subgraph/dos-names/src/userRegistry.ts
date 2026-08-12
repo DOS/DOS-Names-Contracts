@@ -226,7 +226,6 @@ function applyOwnershipTransfer(
   if (domain === null) {
     return;
   }
-  domain.owner = account.id;
   domain.registrant = account.id;
   domain.wrappedOwner = account.id;
   domain.save();

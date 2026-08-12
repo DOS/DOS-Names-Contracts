@@ -61,6 +61,7 @@ import { Domain, RegistryPath } from "../src/types/schema";
 const OWNER = "0x89205a3a3b2a69de6dbf7f01ed13b2108b2c43e7";
 const NEW_OWNER = "0x4976fb03c32e5b8cfe2b6ccb31c09ba78ebaba41";
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+const DOS_REGISTRY = "0x5555555555555555555555555555555555555555";
 const USER_REGISTRY = "0x1111111111111111111111111111111111111111";
 const RESOLVER = "0x2222222222222222222222222222222222222222";
 const NESTED_REGISTRY = "0x3333333333333333333333333333333333333333";
@@ -84,6 +85,7 @@ const SECOND_BOB_DOS =
 
 function registration(tokenId: i32): LabelRegistered {
   let mock = newMockEvent();
+  mock.address = Address.fromString(DOS_REGISTRY);
   let event = new LabelRegistered(
     mock.address,
     mock.logIndex,
@@ -646,7 +648,9 @@ test("token regeneration preserves the canonical domain mapping", () => {
   handleTokenRegenerated(regeneration(123, 456));
   handleTransferSingle(transfer(456));
 
-  assert.fieldEquals("Domain", ALICE_DOS, "owner", NEW_OWNER);
+  assert.fieldEquals("Domain", ALICE_DOS, "owner", DOS_REGISTRY);
+  assert.fieldEquals("Domain", ALICE_DOS, "wrappedOwner", NEW_OWNER);
+  assert.fieldEquals("WrappedDomain", ALICE_DOS, "owner", NEW_OWNER);
   assert.fieldEquals("Domain", ALICE_DOS, "tokenId", "456");
   assert.fieldEquals(
     "TokenToDomain",
@@ -665,7 +669,8 @@ test("zero-value transfers do not change top-level ownership", () => {
 
   handleTransferSingle(transfer(123, 0));
 
-  assert.fieldEquals("Domain", ALICE_DOS, "owner", OWNER);
+  assert.fieldEquals("Domain", ALICE_DOS, "owner", DOS_REGISTRY);
+  assert.fieldEquals("Domain", ALICE_DOS, "wrappedOwner", OWNER);
   assert.entityCount("Transfer", 0);
 });
 
@@ -674,7 +679,8 @@ test("batch transfers update mapped top-level names and ignore zero values", () 
 
   handleTransferBatch(batchTransfer([123, 999], [1, 0]));
 
-  assert.fieldEquals("Domain", ALICE_DOS, "owner", NEW_OWNER);
+  assert.fieldEquals("Domain", ALICE_DOS, "owner", DOS_REGISTRY);
+  assert.fieldEquals("Domain", ALICE_DOS, "wrappedOwner", NEW_OWNER);
   assert.entityCount("Transfer", 1);
 });
 
@@ -696,7 +702,8 @@ test("a user-registry token transfer updates the subname owner", () => {
 
   handleUserRegistryTransferSingle(userRegistryTransfer(456));
 
-  assert.fieldEquals("Domain", SUB_ALICE_DOS, "owner", NEW_OWNER);
+  assert.fieldEquals("Domain", SUB_ALICE_DOS, "owner", USER_REGISTRY);
+  assert.fieldEquals("Domain", SUB_ALICE_DOS, "wrappedOwner", NEW_OWNER);
   assert.fieldEquals("WrappedDomain", SUB_ALICE_DOS, "owner", NEW_OWNER);
   assert.fieldEquals("Registration", SUB_ALICE_DOS, "registrant", NEW_OWNER);
 });
@@ -708,7 +715,8 @@ test("zero-value user-registry transfers do not change ownership", () => {
 
   handleUserRegistryTransferSingle(userRegistryTransfer(456, 0));
 
-  assert.fieldEquals("Domain", SUB_ALICE_DOS, "owner", OWNER);
+  assert.fieldEquals("Domain", SUB_ALICE_DOS, "owner", USER_REGISTRY);
+  assert.fieldEquals("Domain", SUB_ALICE_DOS, "wrappedOwner", OWNER);
 });
 
 test("batch transfers update mapped user-registry names", () => {
@@ -718,7 +726,8 @@ test("batch transfers update mapped user-registry names", () => {
 
   handleUserRegistryTransferBatch(userRegistryBatchTransfer([456, 999], [1, 0]));
 
-  assert.fieldEquals("Domain", SUB_ALICE_DOS, "owner", NEW_OWNER);
+  assert.fieldEquals("Domain", SUB_ALICE_DOS, "owner", USER_REGISTRY);
+  assert.fieldEquals("Domain", SUB_ALICE_DOS, "wrappedOwner", NEW_OWNER);
   assert.fieldEquals("WrappedDomain", SUB_ALICE_DOS, "owner", NEW_OWNER);
 });
 
@@ -759,7 +768,8 @@ test("detached registry sources retain current state for a later attachment", ()
   );
 
   assert.fieldEquals("Domain", SUB_ALICE_DOS, "owner", ZERO_ADDRESS);
-  assert.fieldEquals("Domain", SUB_BOB_DOS, "owner", NEW_OWNER);
+  assert.fieldEquals("Domain", SUB_BOB_DOS, "owner", USER_REGISTRY);
+  assert.fieldEquals("Domain", SUB_BOB_DOS, "wrappedOwner", NEW_OWNER);
 });
 
 test("attaching a shared registry backfills existing children for the new parent", () => {
@@ -786,7 +796,7 @@ test("attaching a shared registry backfills existing children for the new parent
 
   assert.entityCount("TokenToDomain", 3);
   assert.fieldEquals("Domain", SUB_BOB_DOS, "name", "sub.bob.dos");
-  assert.fieldEquals("Domain", SUB_BOB_DOS, "owner", OWNER);
+  assert.fieldEquals("Domain", SUB_BOB_DOS, "owner", USER_REGISTRY);
 });
 
 test("backfilling multiple children preserves each ownership event", () => {
@@ -814,8 +824,8 @@ test("backfilling multiple children preserves each ownership event", () => {
     []
   );
 
-  assert.fieldEquals("Domain", SUB_BOB_DOS, "owner", OWNER);
-  assert.fieldEquals("Domain", SECOND_BOB_DOS, "owner", OWNER);
+  assert.fieldEquals("Domain", SUB_BOB_DOS, "owner", USER_REGISTRY);
+  assert.fieldEquals("Domain", SECOND_BOB_DOS, "owner", USER_REGISTRY);
   assert.entityCount("NewOwner", 5);
 });
 
@@ -922,8 +932,8 @@ test("shared registry events retain one history row per parent context", () => {
   handleUserRegistryTransferSingle(userRegistryTransfer(456));
 
   assert.entityCount("Transfer", 2);
-  assert.fieldEquals("Domain", SUB_ALICE_DOS, "owner", NEW_OWNER);
-  assert.fieldEquals("Domain", SUB_BOB_DOS, "owner", NEW_OWNER);
+  assert.fieldEquals("Domain", SUB_ALICE_DOS, "owner", USER_REGISTRY);
+  assert.fieldEquals("Domain", SUB_BOB_DOS, "owner", USER_REGISTRY);
 });
 
 test("a user-registry unregistration retires the scoped token mapping", () => {
@@ -1004,7 +1014,7 @@ test("user-registry token regeneration keeps later transfers attached to the sub
   handleUserRegistryTransferSingle(userRegistryTransfer(789));
 
   assert.fieldEquals("Domain", SUB_ALICE_DOS, "tokenId", "789");
-  assert.fieldEquals("Domain", SUB_ALICE_DOS, "owner", NEW_OWNER);
+  assert.fieldEquals("Domain", SUB_ALICE_DOS, "owner", USER_REGISTRY);
   assert.fieldEquals(
     "TokenToDomain",
     USER_REGISTRY
