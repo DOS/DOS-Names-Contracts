@@ -26,6 +26,7 @@ import {
   WrappedTransfer,
 } from "./types/schema";
 import {
+  activeRegistryAncestors,
   attachResolver,
   isActiveUserRegistry,
   loadRegistryChild,
@@ -62,15 +63,6 @@ function contextEventID(event: ethereum.Event): string {
     .concat(dataSource.context().getBytes("parentNode").toHexString());
 }
 
-function contextRegistryAncestors(registry: Address): string[] {
-  let context = dataSource.context();
-  if (!context.isSet("registryAncestors")) {
-    return [registry.toHexString()];
-  }
-  let encoded = context.getString("registryAncestors");
-  return encoded.length == 0 ? new Array<string>() : encoded.split(",");
-}
-
 export function handleUserRegistryLabelRegistered(event: LabelRegisteredEvent): void {
   let label = event.params.label;
   if (!checkValidLabel(label)) {
@@ -85,7 +77,8 @@ export function handleUserRegistryLabelRegistered(event: LabelRegisteredEvent): 
     event.params.expiry,
     event.block.timestamp
   );
-  if (!isActiveUserRegistry(event.address)) {
+  let registryAncestors = activeRegistryAncestors(event.address);
+  if (registryAncestors === null) {
     return;
   }
   materializeRegistryChild(
@@ -301,7 +294,8 @@ export function handleUserRegistrySubregistryUpdated(event: SubregistryUpdatedEv
     child.subregistry = event.params.subregistry;
     child.save();
   }
-  if (!isActiveUserRegistry(event.address)) {
+  let registryAncestors = activeRegistryAncestors(event.address);
+  if (registryAncestors === null) {
     return;
   }
 
@@ -314,7 +308,7 @@ export function handleUserRegistrySubregistryUpdated(event: SubregistryUpdatedEv
     node,
     event.params.subregistry,
     event,
-    contextRegistryAncestors(event.address)
+    registryAncestors as string[]
   );
 }
 
@@ -326,7 +320,8 @@ export function handleUserRegistryLabelUnregistered(event: LabelUnregisteredEven
     child.owner = Address.fromString(EMPTY_ADDRESS);
     child.save();
   }
-  if (!isActiveUserRegistry(event.address)) {
+  let registryAncestors = activeRegistryAncestors(event.address);
+  if (registryAncestors === null) {
     return;
   }
   let tokenKey = registryTokenId(event, tokenIdToHex(event.params.tokenId));
@@ -345,7 +340,7 @@ export function handleUserRegistryLabelUnregistered(event: LabelUnregisteredEven
     mapping.domain,
     Address.fromString(EMPTY_ADDRESS),
     event,
-    contextRegistryAncestors(event.address)
+    registryAncestors as string[]
   );
   let zeroAccount = createOrLoadAccount(EMPTY_ADDRESS);
   domain.owner = zeroAccount.id;

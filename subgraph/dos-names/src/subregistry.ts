@@ -59,6 +59,21 @@ export function isActiveUserRegistry(registry: Address): boolean {
   );
 }
 
+export function activeRegistryAncestors(registry: Address): string[] | null {
+  let parentNode = dataSource.context().getBytes("parentNode").toHexString();
+  let path = RegistryPath.load(parentNode);
+  if (
+    path === null ||
+    !path.active ||
+    path.registry.toHexString() != registry.toHexString()
+  ) {
+    return null;
+  }
+  return path.registryAncestors.length == 0
+    ? new Array<string>()
+    : path.registryAncestors.split(",");
+}
+
 export function loadRegistryChild(
   registry: Address,
   tokenId: BigInt
@@ -421,11 +436,12 @@ export function updateSubregistry(
       path = new RegistryPath(currentParent as string);
       path.parentDomain = currentParent as string;
     }
+    let nextAncestors = currentAncestors.concat([currentRegistry as string]);
     path.registry = Address.fromString(currentRegistry as string);
+    path.registryAncestors = nextAncestors.join(",");
     path.active = true;
     path.save();
 
-    let nextAncestors = currentAncestors.concat([currentRegistry as string]);
     if (requiresSource) {
       let context = new DataSourceContext();
       context.setBytes(

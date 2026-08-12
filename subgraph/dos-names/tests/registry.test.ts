@@ -33,7 +33,10 @@ import {
   handleUserRegistryTransferBatch,
   handleUserRegistryTransferSingle,
 } from "../src/userRegistry";
-import { updateSubregistry } from "../src/subregistry";
+import {
+  activeRegistryAncestors,
+  updateSubregistry,
+} from "../src/subregistry";
 import {
   LabelRegistered,
   LabelUnregistered,
@@ -59,6 +62,7 @@ const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 const USER_REGISTRY = "0x1111111111111111111111111111111111111111";
 const RESOLVER = "0x2222222222222222222222222222222222222222";
 const NESTED_REGISTRY = "0x3333333333333333333333333333333333333333";
+const REPLACEMENT_REGISTRY = "0x4444444444444444444444444444444444444444";
 const LABEL_HASH =
   "0x9c0257114eb9399a2985f8e75dad7600c5d89fe3824ffa99ec1c3eb8bf3b0501";
 const ALICE_DOS =
@@ -807,6 +811,44 @@ test("replacing a subregistry retires names from the old registry", () => {
 
   assert.fieldEquals("Domain", SUB_ALICE_DOS, "owner", ZERO_ADDRESS);
   assert.fieldEquals("RegistryPath", ALICE_DOS, "registry", NESTED_REGISTRY);
+});
+
+test("reattaching a nested registry refreshes its active ancestry", () => {
+  handleLabelRegistered(registration(123));
+  activateUserRegistry();
+  handleUserRegistryLabelRegistered(userRegistryRegistration(456));
+  handleUserRegistrySubregistryUpdated(userRegistrySubregistryUpdated(456));
+
+  handleSubregistryUpdated(subregistryUpdated(123, REPLACEMENT_REGISTRY));
+  updateSubregistry(
+    SUB_ALICE_DOS,
+    Address.fromString(NESTED_REGISTRY),
+    subregistryUpdated(123),
+    [REPLACEMENT_REGISTRY]
+  );
+
+  let staleContext = new DataSourceContext();
+  staleContext.setBytes("parentNode", Bytes.fromHexString(SUB_ALICE_DOS));
+  staleContext.setString(
+    "registryAncestors",
+    USER_REGISTRY.concat(",").concat(NESTED_REGISTRY)
+  );
+  dataSourceMock.setContext(staleContext);
+  let currentAncestors = activeRegistryAncestors(
+    Address.fromString(NESTED_REGISTRY)
+  );
+
+  assert.assertNotNull(currentAncestors);
+  assert.stringEquals(
+    (currentAncestors as string[]).join(","),
+    REPLACEMENT_REGISTRY.concat(",").concat(NESTED_REGISTRY)
+  );
+  assert.fieldEquals(
+    "RegistryPath",
+    SUB_ALICE_DOS,
+    "registryAncestors",
+    REPLACEMENT_REGISTRY.concat(",").concat(NESTED_REGISTRY)
+  );
 });
 
 test("shared registry events retain one history row per parent context", () => {

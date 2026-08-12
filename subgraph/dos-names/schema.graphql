@@ -315,6 +315,8 @@ type RegistryPath @entity {
   id: ID!
   registry: Bytes!
   parentDomain: Domain!
+  "Current registry ancestry for cycle detection after detach and reattachment"
+  registryAncestors: String!
   active: Boolean!
 }
 
