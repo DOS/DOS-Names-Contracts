@@ -1,8 +1,9 @@
 import {
+  Address,
+  BigInt,
   ByteArray,
   Bytes,
   crypto,
-  DataSourceContext,
   dataSource,
   ethereum,
   store,
@@ -15,6 +16,7 @@ import {
   ResolverUpdated as ResolverUpdatedEvent,
   SubregistryUpdated as SubregistryUpdatedEvent,
   TokenRegenerated as TokenRegeneratedEvent,
+  TransferBatch as TransferBatchEvent,
   TransferSingle as TransferSingleEvent,
 } from "./types/templates/UserRegistryTemplate/PermissionedRegistry";
 import {
@@ -22,7 +24,6 @@ import {
   NewResolver,
   NewOwner,
   Registration,
-  RegistryPath,
   Resolver,
   ResolverSource,
   TokenToDomain,
@@ -30,7 +31,8 @@ import {
   WrappedDomain,
   WrappedTransfer,
 } from "./types/schema";
-import { ResolverTemplate, UserRegistryTemplate } from "./types/templates";
+import { ResolverTemplate } from "./types/templates";
+import { isActiveUserRegistry, updateSubregistry } from "./subregistry";
 import {
   checkValidLabel,
   concat,
@@ -41,7 +43,12 @@ import {
 } from "./utils";
 
 function registryTokenId(event: ethereum.Event, tokenId: string): string {
-  return event.address.toHexString().concat("-").concat(tokenId);
+  return event.address
+    .toHexString()
+    .concat("-")
+    .concat(dataSource.context().getBytes("parentNode").toHexString())
+    .concat("-")
+    .concat(tokenId);
 }
 
 function resolveDomainNode(event: ethereum.Event, tokenId: string): string | null {
@@ -50,6 +57,9 @@ function resolveDomainNode(event: ethereum.Event, tokenId: string): string | nul
 }
 
 export function handleUserRegistryLabelRegistered(event: LabelRegisteredEvent): void {
+  if (!isActiveUserRegistry(event.address)) {
+    return;
+  }
   let label = event.params.label;
   if (!checkValidLabel(label)) {
     return;
@@ -126,6 +136,9 @@ export function handleUserRegistryLabelRegistered(event: LabelRegisteredEvent): 
 }
 
 export function handleUserRegistryResolverUpdated(event: ResolverUpdatedEvent): void {
+  if (!isActiveUserRegistry(event.address)) {
+    return;
+  }
   let node = resolveDomainNode(event, tokenIdToHex(event.params.tokenId));
   if (node === null) {
     return;
@@ -175,6 +188,9 @@ export function handleUserRegistryResolverUpdated(event: ResolverUpdatedEvent): 
 }
 
 export function handleUserRegistryExpiryUpdated(event: ExpiryUpdatedEvent): void {
+  if (!isActiveUserRegistry(event.address)) {
+    return;
+  }
   let node = resolveDomainNode(event, tokenIdToHex(event.params.tokenId));
   if (node === null) {
     return;
@@ -200,6 +216,12 @@ export function handleUserRegistryExpiryUpdated(event: ExpiryUpdatedEvent): void
 }
 
 export function handleUserRegistryTransferSingle(event: TransferSingleEvent): void {
+  if (
+    !isActiveUserRegistry(event.address) ||
+    event.params.value.equals(BigInt.fromI32(0))
+  ) {
+    return;
+  }
   let node = resolveDomainNode(event, tokenIdToHex(event.params.id));
   if (node === null) {
     return;
@@ -210,7 +232,43 @@ export function handleUserRegistryTransferSingle(event: TransferSingleEvent): vo
     return;
   }
 
-  let account = createOrLoadAccount(event.params.to.toHexString());
+  applyOwnershipTransfer(node, event.params.to, event, "");
+}
+
+export function handleUserRegistryTransferBatch(event: TransferBatchEvent): void {
+  if (!isActiveUserRegistry(event.address)) {
+    return;
+  }
+  let ids = event.params.ids;
+  let values = event.params.values;
+  let count = ids.length < values.length ? ids.length : values.length;
+  for (let i = 0; i < count; i++) {
+    if (values[i].equals(BigInt.fromI32(0))) {
+      continue;
+    }
+    let node = resolveDomainNode(event, tokenIdToHex(ids[i]));
+    if (node !== null) {
+      applyOwnershipTransfer(
+        node,
+        event.params.to,
+        event,
+        "-".concat(i.toString())
+      );
+    }
+  }
+}
+
+function applyOwnershipTransfer(
+  node: string,
+  to: Address,
+  event: ethereum.Event,
+  eventSuffix: string
+): void {
+  let account = createOrLoadAccount(to.toHexString());
+  let domain = Domain.load(node);
+  if (domain === null) {
+    return;
+  }
   domain.owner = account.id;
   domain.registrant = account.id;
   domain.wrappedOwner = account.id;
@@ -228,14 +286,16 @@ export function handleUserRegistryTransferSingle(event: TransferSingleEvent): vo
     registration.save();
   }
 
-  let transferEvent = new Transfer(createEventID(event));
+  let transferEvent = new Transfer(createEventID(event).concat(eventSuffix));
   transferEvent.domain = node;
   transferEvent.blockNumber = event.block.number.toI32();
   transferEvent.transactionID = event.transaction.hash;
   transferEvent.owner = account.id;
   transferEvent.save();
 
-  let wrappedTransfer = new WrappedTransfer(createEventID(event).concat("-wrapped"));
+  let wrappedTransfer = new WrappedTransfer(
+    createEventID(event).concat("-wrapped").concat(eventSuffix)
+  );
   wrappedTransfer.domain = node;
   wrappedTransfer.blockNumber = event.block.number.toI32();
   wrappedTransfer.transactionID = event.transaction.hash;
@@ -244,6 +304,9 @@ export function handleUserRegistryTransferSingle(event: TransferSingleEvent): vo
 }
 
 export function handleUserRegistryTokenRegenerated(event: TokenRegeneratedEvent): void {
+  if (!isActiveUserRegistry(event.address)) {
+    return;
+  }
   let oldId = registryTokenId(event, tokenIdToHex(event.params.oldTokenId));
   let oldMapping = TokenToDomain.load(oldId);
   if (oldMapping === null) {
@@ -264,7 +327,7 @@ export function handleUserRegistryTokenRegenerated(event: TokenRegeneratedEvent)
 }
 
 export function handleUserRegistrySubregistryUpdated(event: SubregistryUpdatedEvent): void {
-  if (event.params.subregistry.toHexString() == EMPTY_ADDRESS) {
+  if (!isActiveUserRegistry(event.address)) {
     return;
   }
 
@@ -273,19 +336,13 @@ export function handleUserRegistrySubregistryUpdated(event: SubregistryUpdatedEv
     return;
   }
 
-  let registryAddress = event.params.subregistry.toHexString();
-  let pathId = registryAddress.concat("-").concat(node);
-  let path = new RegistryPath(pathId);
-  path.registry = event.params.subregistry;
-  path.parentDomain = node;
-  path.save();
-
-  let context = new DataSourceContext();
-  context.setBytes("parentNode", Bytes.fromHexString(node));
-  UserRegistryTemplate.createWithContext(event.params.subregistry, context);
+  updateSubregistry(node, event.params.subregistry);
 }
 
 export function handleUserRegistryLabelUnregistered(event: LabelUnregisteredEvent): void {
+  if (!isActiveUserRegistry(event.address)) {
+    return;
+  }
   let tokenKey = registryTokenId(event, tokenIdToHex(event.params.tokenId));
   let mapping = TokenToDomain.load(tokenKey);
   if (mapping === null) {

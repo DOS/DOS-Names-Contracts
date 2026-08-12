@@ -20,6 +20,7 @@ import {
   handleResolverUpdated,
   handleSubregistryUpdated,
   handleTokenRegenerated,
+  handleTransferBatch,
   handleTransferSingle,
 } from "../src/registry";
 import {
@@ -29,6 +30,7 @@ import {
   handleUserRegistryResolverUpdated,
   handleUserRegistryTokenRegenerated,
   handleUserRegistrySubregistryUpdated,
+  handleUserRegistryTransferBatch,
   handleUserRegistryTransferSingle,
 } from "../src/userRegistry";
 import {
@@ -37,16 +39,18 @@ import {
   ResolverUpdated,
   SubregistryUpdated,
   TokenRegenerated,
+  TransferBatch,
   TransferSingle,
 } from "../src/types/DOSTLDRegistry/PermissionedRegistry";
 import { LabelRegistered as UserRegistryLabelRegistered } from "../src/types/templates/UserRegistryTemplate/PermissionedRegistry";
 import { LabelUnregistered as UserRegistryLabelUnregistered } from "../src/types/templates/UserRegistryTemplate/PermissionedRegistry";
 import { TransferSingle as UserRegistryTransferSingle } from "../src/types/templates/UserRegistryTemplate/PermissionedRegistry";
+import { TransferBatch as UserRegistryTransferBatch } from "../src/types/templates/UserRegistryTemplate/PermissionedRegistry";
 import { ResolverUpdated as UserRegistryResolverUpdated } from "../src/types/templates/UserRegistryTemplate/PermissionedRegistry";
 import { ExpiryUpdated as UserRegistryExpiryUpdated } from "../src/types/templates/UserRegistryTemplate/PermissionedRegistry";
 import { TokenRegenerated as UserRegistryTokenRegenerated } from "../src/types/templates/UserRegistryTemplate/PermissionedRegistry";
 import { SubregistryUpdated as UserRegistrySubregistryUpdated } from "../src/types/templates/UserRegistryTemplate/PermissionedRegistry";
-import { Domain } from "../src/types/schema";
+import { Domain, RegistryPath } from "../src/types/schema";
 
 const OWNER = "0x89205a3a3b2a69de6dbf7f01ed13b2108b2c43e7";
 const NEW_OWNER = "0x4976fb03c32e5b8cfe2b6ccb31c09ba78ebaba41";
@@ -62,6 +66,8 @@ const SUB_LABEL_HASH =
   "0xfa1ea47215815692a5f1391cff19abbaf694c82fb2151a4c351b6c0eeaaf317b";
 const SUB_ALICE_DOS =
   "0x1c1ff2cdbb0b7cc0b67c4b92a0ba7633d2cf2d2e756ea950fbe437050296f930";
+const BOB_DOS =
+  "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 function registration(tokenId: i32): LabelRegistered {
   let mock = newMockEvent();
@@ -127,7 +133,10 @@ function regeneration(oldTokenId: i32, newTokenId: i32): TokenRegenerated {
   return event;
 }
 
-function subregistryUpdated(tokenId: i32): SubregistryUpdated {
+function subregistryUpdated(
+  tokenId: i32,
+  registry: string = USER_REGISTRY
+): SubregistryUpdated {
   let mock = newMockEvent();
   mock.logIndex = BigInt.fromI32(1);
   let event = new SubregistryUpdated(
@@ -147,7 +156,7 @@ function subregistryUpdated(tokenId: i32): SubregistryUpdated {
     ),
     new ethereum.EventParam(
       "subregistry",
-      ethereum.Value.fromAddress(Address.fromString(USER_REGISTRY))
+      ethereum.Value.fromAddress(Address.fromString(registry))
     ),
     new ethereum.EventParam(
       "sender",
@@ -214,7 +223,7 @@ function labelUnregistered(tokenId: i32): LabelUnregistered {
   return event;
 }
 
-function transfer(tokenId: i32): TransferSingle {
+function transfer(tokenId: i32, value: i32 = 1): TransferSingle {
   let mock = newMockEvent();
   mock.logIndex = BigInt.fromI32(2);
   let event = new TransferSingle(
@@ -246,7 +255,48 @@ function transfer(tokenId: i32): TransferSingle {
     ),
     new ethereum.EventParam(
       "value",
-      ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(1))
+      ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(value))
+    ),
+  ];
+  return event;
+}
+
+function batchTransfer(tokenIds: i32[], values: i32[]): TransferBatch {
+  let mock = newMockEvent();
+  mock.logIndex = BigInt.fromI32(3);
+  let event = new TransferBatch(
+    mock.address,
+    mock.logIndex,
+    mock.transactionLogIndex,
+    mock.logType,
+    mock.block,
+    mock.transaction,
+    mock.parameters,
+    mock.receipt
+  );
+  let ids = new Array<BigInt>();
+  let amounts = new Array<BigInt>();
+  for (let i = 0; i < tokenIds.length; i++) {
+    ids.push(BigInt.fromI32(tokenIds[i]));
+    amounts.push(BigInt.fromI32(values[i]));
+  }
+  event.parameters = [
+    new ethereum.EventParam(
+      "operator",
+      ethereum.Value.fromAddress(Address.fromString(OWNER))
+    ),
+    new ethereum.EventParam(
+      "from",
+      ethereum.Value.fromAddress(Address.fromString(OWNER))
+    ),
+    new ethereum.EventParam(
+      "to",
+      ethereum.Value.fromAddress(Address.fromString(NEW_OWNER))
+    ),
+    new ethereum.EventParam("ids", ethereum.Value.fromUnsignedBigIntArray(ids)),
+    new ethereum.EventParam(
+      "values",
+      ethereum.Value.fromUnsignedBigIntArray(amounts)
     ),
   ];
   return event;
@@ -319,7 +369,10 @@ function userRegistryLabelUnregistered(tokenId: i32): UserRegistryLabelUnregiste
   return event;
 }
 
-function userRegistryTransfer(tokenId: i32): UserRegistryTransferSingle {
+function userRegistryTransfer(
+  tokenId: i32,
+  value: i32 = 1
+): UserRegistryTransferSingle {
   let mock = newMockEvent();
   mock.address = Address.fromString(USER_REGISTRY);
   mock.logIndex = BigInt.fromI32(1);
@@ -352,10 +405,62 @@ function userRegistryTransfer(tokenId: i32): UserRegistryTransferSingle {
     ),
     new ethereum.EventParam(
       "value",
-      ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(1))
+      ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(value))
     ),
   ];
   return event;
+}
+
+function userRegistryBatchTransfer(
+  tokenIds: i32[],
+  values: i32[]
+): UserRegistryTransferBatch {
+  let mock = newMockEvent();
+  mock.address = Address.fromString(USER_REGISTRY);
+  mock.logIndex = BigInt.fromI32(3);
+  let event = new UserRegistryTransferBatch(
+    mock.address,
+    mock.logIndex,
+    mock.transactionLogIndex,
+    mock.logType,
+    mock.block,
+    mock.transaction,
+    mock.parameters,
+    mock.receipt
+  );
+  let ids = new Array<BigInt>();
+  let amounts = new Array<BigInt>();
+  for (let i = 0; i < tokenIds.length; i++) {
+    ids.push(BigInt.fromI32(tokenIds[i]));
+    amounts.push(BigInt.fromI32(values[i]));
+  }
+  event.parameters = [
+    new ethereum.EventParam(
+      "operator",
+      ethereum.Value.fromAddress(Address.fromString(OWNER))
+    ),
+    new ethereum.EventParam(
+      "from",
+      ethereum.Value.fromAddress(Address.fromString(OWNER))
+    ),
+    new ethereum.EventParam(
+      "to",
+      ethereum.Value.fromAddress(Address.fromString(NEW_OWNER))
+    ),
+    new ethereum.EventParam("ids", ethereum.Value.fromUnsignedBigIntArray(ids)),
+    new ethereum.EventParam(
+      "values",
+      ethereum.Value.fromUnsignedBigIntArray(amounts)
+    ),
+  ];
+  return event;
+}
+
+function activateUserRegistry(): void {
+  handleSubregistryUpdated(subregistryUpdated(123));
+  let context = new DataSourceContext();
+  context.setBytes("parentNode", Bytes.fromHexString(ALICE_DOS));
+  dataSourceMock.setContext(context);
 }
 
 function userRegistryResolverUpdated(tokenId: i32): UserRegistryResolverUpdated {
@@ -504,12 +609,27 @@ test("token regeneration preserves the canonical domain mapping", () => {
   );
 });
 
-test("a discovered user registry indexes a subname under its parent path", () => {
+test("zero-value transfers do not change top-level ownership", () => {
   handleLabelRegistered(registration(123));
 
-  let context = new DataSourceContext();
-  context.setBytes("parentNode", Bytes.fromHexString(ALICE_DOS));
-  dataSourceMock.setContext(context);
+  handleTransferSingle(transfer(123, 0));
+
+  assert.fieldEquals("Domain", ALICE_DOS, "owner", OWNER);
+  assert.entityCount("Transfer", 0);
+});
+
+test("batch transfers update mapped top-level names and ignore zero values", () => {
+  handleLabelRegistered(registration(123));
+
+  handleTransferBatch(batchTransfer([123, 999], [1, 0]));
+
+  assert.fieldEquals("Domain", ALICE_DOS, "owner", NEW_OWNER);
+  assert.entityCount("Transfer", 1);
+});
+
+test("a discovered user registry indexes a subname under its parent path", () => {
+  handleLabelRegistered(registration(123));
+  activateUserRegistry();
 
   handleUserRegistryLabelRegistered(userRegistryRegistration(456));
 
@@ -520,9 +640,7 @@ test("a discovered user registry indexes a subname under its parent path", () =>
 
 test("a user-registry token transfer updates the subname owner", () => {
   handleLabelRegistered(registration(123));
-  let context = new DataSourceContext();
-  context.setBytes("parentNode", Bytes.fromHexString(ALICE_DOS));
-  dataSourceMock.setContext(context);
+  activateUserRegistry();
   handleUserRegistryLabelRegistered(userRegistryRegistration(456));
 
   handleUserRegistryTransferSingle(userRegistryTransfer(456));
@@ -532,11 +650,71 @@ test("a user-registry token transfer updates the subname owner", () => {
   assert.fieldEquals("Registration", SUB_ALICE_DOS, "registrant", NEW_OWNER);
 });
 
+test("zero-value user-registry transfers do not change ownership", () => {
+  handleLabelRegistered(registration(123));
+  activateUserRegistry();
+  handleUserRegistryLabelRegistered(userRegistryRegistration(456));
+
+  handleUserRegistryTransferSingle(userRegistryTransfer(456, 0));
+
+  assert.fieldEquals("Domain", SUB_ALICE_DOS, "owner", OWNER);
+});
+
+test("batch transfers update mapped user-registry names", () => {
+  handleLabelRegistered(registration(123));
+  activateUserRegistry();
+  handleUserRegistryLabelRegistered(userRegistryRegistration(456));
+
+  handleUserRegistryTransferBatch(userRegistryBatchTransfer([456, 999], [1, 0]));
+
+  assert.fieldEquals("Domain", SUB_ALICE_DOS, "owner", NEW_OWNER);
+  assert.fieldEquals("WrappedDomain", SUB_ALICE_DOS, "owner", NEW_OWNER);
+});
+
+test("detached user registries stop mutating their former parent path", () => {
+  handleLabelRegistered(registration(123));
+  activateUserRegistry();
+  handleUserRegistryLabelRegistered(userRegistryRegistration(456));
+
+  handleSubregistryUpdated(subregistryUpdated(123, ZERO_ADDRESS));
+  handleUserRegistryTransferSingle(userRegistryTransfer(456));
+
+  assert.fieldEquals("RegistryPath", ALICE_DOS, "active", "false");
+  assert.fieldEquals("Domain", SUB_ALICE_DOS, "owner", OWNER);
+});
+
+test("a shared user registry keeps token mappings scoped to each parent", () => {
+  handleLabelRegistered(registration(123));
+  activateUserRegistry();
+  handleUserRegistryLabelRegistered(userRegistryRegistration(456));
+
+  let bob = new Domain(BOB_DOS);
+  bob.name = "bob.dos";
+  bob.labelName = "bob";
+  bob.owner = OWNER;
+  bob.isMigrated = true;
+  bob.createdAt = BigInt.fromI32(1);
+  bob.subdomainCount = 0;
+  bob.storedOffchain = false;
+  bob.resolvedWithWildcard = false;
+  bob.save();
+  let path = new RegistryPath(BOB_DOS);
+  path.registry = Address.fromString(USER_REGISTRY);
+  path.parentDomain = BOB_DOS;
+  path.active = true;
+  path.save();
+
+  let bobContext = new DataSourceContext();
+  bobContext.setBytes("parentNode", Bytes.fromHexString(BOB_DOS));
+  dataSourceMock.setContext(bobContext);
+  handleUserRegistryLabelRegistered(userRegistryRegistration(456));
+
+  assert.entityCount("TokenToDomain", 3);
+});
+
 test("a user-registry unregistration retires the scoped token mapping", () => {
   handleLabelRegistered(registration(123));
-  let context = new DataSourceContext();
-  context.setBytes("parentNode", Bytes.fromHexString(ALICE_DOS));
-  dataSourceMock.setContext(context);
+  activateUserRegistry();
   handleUserRegistryLabelRegistered(userRegistryRegistration(456));
 
   handleUserRegistryLabelUnregistered(userRegistryLabelUnregistered(456));
@@ -547,15 +725,16 @@ test("a user-registry unregistration retires the scoped token mapping", () => {
   assert.fieldEquals("Registration", SUB_ALICE_DOS, "registrant", ZERO_ADDRESS);
   assert.notInStore(
     "TokenToDomain",
-    USER_REGISTRY.concat("-0x00000000000000000000000000000000000000000000000000000000000001c8")
+    USER_REGISTRY
+      .concat("-")
+      .concat(ALICE_DOS)
+      .concat("-0x00000000000000000000000000000000000000000000000000000000000001c8")
   );
 });
 
 test("a user-registry resolver is attached to the subname and dynamically indexed", () => {
   handleLabelRegistered(registration(123));
-  let context = new DataSourceContext();
-  context.setBytes("parentNode", Bytes.fromHexString(ALICE_DOS));
-  dataSourceMock.setContext(context);
+  activateUserRegistry();
   handleUserRegistryLabelRegistered(userRegistryRegistration(456));
 
   handleUserRegistryResolverUpdated(userRegistryResolverUpdated(456));
@@ -571,9 +750,7 @@ test("a user-registry resolver is attached to the subname and dynamically indexe
 
 test("a user-registry renewal updates every BENS expiry view", () => {
   handleLabelRegistered(registration(123));
-  let context = new DataSourceContext();
-  context.setBytes("parentNode", Bytes.fromHexString(ALICE_DOS));
-  dataSourceMock.setContext(context);
+  activateUserRegistry();
   handleUserRegistryLabelRegistered(userRegistryRegistration(456));
 
   handleUserRegistryExpiryUpdated(userRegistryExpiryUpdated(456));
@@ -595,9 +772,7 @@ test("a user-registry renewal updates every BENS expiry view", () => {
 
 test("user-registry token regeneration keeps later transfers attached to the subname", () => {
   handleLabelRegistered(registration(123));
-  let context = new DataSourceContext();
-  context.setBytes("parentNode", Bytes.fromHexString(ALICE_DOS));
-  dataSourceMock.setContext(context);
+  activateUserRegistry();
   handleUserRegistryLabelRegistered(userRegistryRegistration(456));
 
   handleUserRegistryTokenRegenerated(userRegistryTokenRegenerated(456, 789));
@@ -607,28 +782,32 @@ test("user-registry token regeneration keeps later transfers attached to the sub
   assert.fieldEquals("Domain", SUB_ALICE_DOS, "owner", NEW_OWNER);
   assert.fieldEquals(
     "TokenToDomain",
-    USER_REGISTRY.concat("-0x0000000000000000000000000000000000000000000000000000000000000315"),
+    USER_REGISTRY
+      .concat("-")
+      .concat(ALICE_DOS)
+      .concat("-0x0000000000000000000000000000000000000000000000000000000000000315"),
     "domain",
     SUB_ALICE_DOS
   );
   assert.notInStore(
     "TokenToDomain",
-    USER_REGISTRY.concat("-0x00000000000000000000000000000000000000000000000000000000000001c8")
+    USER_REGISTRY
+      .concat("-")
+      .concat(ALICE_DOS)
+      .concat("-0x00000000000000000000000000000000000000000000000000000000000001c8")
   );
 });
 
 test("a nested user registry preserves the complete parent path", () => {
   handleLabelRegistered(registration(123));
-  let context = new DataSourceContext();
-  context.setBytes("parentNode", Bytes.fromHexString(ALICE_DOS));
-  dataSourceMock.setContext(context);
+  activateUserRegistry();
   handleUserRegistryLabelRegistered(userRegistryRegistration(456));
 
   handleUserRegistrySubregistryUpdated(userRegistrySubregistryUpdated(456));
 
   assert.fieldEquals(
     "RegistryPath",
-    NESTED_REGISTRY.concat("-").concat(SUB_ALICE_DOS),
+    SUB_ALICE_DOS,
     "parentDomain",
     SUB_ALICE_DOS
   );
@@ -640,13 +819,13 @@ test("subregistry discovery stores the parent path for dynamic indexing", () => 
 
   assert.fieldEquals(
     "RegistryPath",
-    USER_REGISTRY.concat("-").concat(ALICE_DOS),
+    ALICE_DOS,
     "registry",
     USER_REGISTRY
   );
   assert.fieldEquals(
     "RegistryPath",
-    USER_REGISTRY.concat("-").concat(ALICE_DOS),
+    ALICE_DOS,
     "parentDomain",
     ALICE_DOS
   );

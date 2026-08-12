@@ -315,6 +315,7 @@ type RegistryPath @entity {
   id: ID!
   registry: Bytes!
   parentDomain: Domain!
+  active: Boolean!
 }
 
 "Tracks resolver addresses already registered as dynamic data sources"

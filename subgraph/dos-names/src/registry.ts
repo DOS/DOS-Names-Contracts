@@ -7,11 +7,11 @@
  * We use a TokenToDomain mapping entity to resolve tokenId → domain.
  */
 import {
+  Address,
   BigInt,
   ByteArray,
-  Bytes,
   crypto,
-  DataSourceContext,
+  ethereum,
   store,
 } from "@graphprotocol/graph-ts";
 
@@ -22,6 +22,7 @@ import {
   LabelUnregistered as LabelUnregisteredEvent,
   SubregistryUpdated as SubregistryUpdatedEvent,
   TokenRegenerated as TokenRegeneratedEvent,
+  TransferBatch as TransferBatchEvent,
   TransferSingle as TransferSingleEvent,
 } from "./types/DOSTLDRegistry/PermissionedRegistry";
 
@@ -31,7 +32,6 @@ import {
   NewOwner,
   NewResolver,
   Registration,
-  RegistryPath,
   Resolver,
   ResolverSource,
   TokenToDomain,
@@ -39,7 +39,8 @@ import {
   WrappedDomain,
   WrappedTransfer,
 } from "./types/schema";
-import { ResolverTemplate, UserRegistryTemplate } from "./types/templates";
+import { ResolverTemplate } from "./types/templates";
+import { updateSubregistry } from "./subregistry";
 
 import {
   concat,
@@ -262,10 +263,11 @@ export function handleExpiryUpdated(event: ExpiryUpdatedEvent): void {
  * We use TokenToDomain mapping to find the correct domain.
  */
 export function handleTransferSingle(event: TransferSingleEvent): void {
-  let tokenId = event.params.id;
-  let to = event.params.to;
+  if (event.params.value.equals(BigInt.fromI32(0))) {
+    return;
+  }
 
-  let node = resolveDomainNode(tokenId);
+  let node = resolveDomainNode(event.params.id);
   if (node === null) {
     // No mapping found - this TransferSingle fired BEFORE LabelRegistered
     // (e.g., _mint emits TransferSingle before LabelRegistered in same tx).
@@ -273,6 +275,30 @@ export function handleTransferSingle(event: TransferSingleEvent): void {
     return;
   }
 
+  applyOwnershipTransfer(node, event.params.to, event, "");
+}
+
+export function handleTransferBatch(event: TransferBatchEvent): void {
+  let ids = event.params.ids;
+  let values = event.params.values;
+  let count = ids.length < values.length ? ids.length : values.length;
+  for (let i = 0; i < count; i++) {
+    if (values[i].equals(BigInt.fromI32(0))) {
+      continue;
+    }
+    let node = resolveDomainNode(ids[i]);
+    if (node !== null) {
+      applyOwnershipTransfer(node, event.params.to, event, "-".concat(i.toString()));
+    }
+  }
+}
+
+function applyOwnershipTransfer(
+  node: string,
+  to: Address,
+  event: ethereum.Event,
+  eventSuffix: string
+): void {
   let account = createOrLoadAccount(to.toHexString());
 
   let domain = Domain.load(node);
@@ -293,7 +319,7 @@ export function handleTransferSingle(event: TransferSingleEvent): void {
   }
 
   // Create Transfer event
-  let transferEvent = new Transfer(createEventID(event));
+  let transferEvent = new Transfer(createEventID(event).concat(eventSuffix));
   transferEvent.blockNumber = event.block.number.toI32();
   transferEvent.transactionID = event.transaction.hash;
   transferEvent.domain = node;
@@ -303,6 +329,7 @@ export function handleTransferSingle(event: TransferSingleEvent): void {
   // Create WrappedTransfer event
   let wrappedTransfer = new WrappedTransfer(
     createEventID(event).concat("-wrapped")
+      .concat(eventSuffix)
   );
   wrappedTransfer.blockNumber = event.block.number.toI32();
   wrappedTransfer.transactionID = event.transaction.hash;
@@ -381,23 +408,9 @@ export function handleLabelUnregistered(event: LabelUnregisteredEvent): void {
 }
 
 export function handleSubregistryUpdated(event: SubregistryUpdatedEvent): void {
-  if (event.params.subregistry.toHexString() == EMPTY_ADDRESS) {
-    return;
-  }
-
   let node = resolveDomainNode(event.params.tokenId);
   if (node === null || Domain.load(node) === null) {
     return;
   }
-
-  let registryAddress = event.params.subregistry.toHexString();
-  let pathId = registryAddress.concat("-").concat(node);
-  let path = new RegistryPath(pathId);
-  path.registry = event.params.subregistry;
-  path.parentDomain = node;
-  path.save();
-
-  let context = new DataSourceContext();
-  context.setBytes("parentNode", Bytes.fromHexString(node));
-  UserRegistryTemplate.createWithContext(event.params.subregistry, context);
+  updateSubregistry(node, event.params.subregistry);
 }
