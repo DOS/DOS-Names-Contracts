@@ -1,0 +1,32 @@
+{
+  "environment": "dos-testnet",
+  "chainId": 3939,
+  "deploymentBlock": 78,
+  "finalDeploymentBlock": 118,
+  "deployedAt": "2026-08-12T14:57:00Z",
+  "deployer": "0x99999e454138f6be73E2bE82c890bc5765749999",
+  "owner": "0x310Bc061214ee89aF5CfB28a6ebF96c5436fa3CD",
+  "beneficiary": "0x310Bc061214ee89aF5CfB28a6ebF96c5436fa3CD",
+  "transactions": {
+    "first": "0x0e5179cef7c84e733ec4f71cbd9cf8a4dcca336e1e501997b3eecc7e116eed68",
+    "last": "0xe65eb54b3dc69b7e664c65c907c4cf9b6f049d64b27686e0d851aed03f9c648e",
+    "count": 41
+  },
+  "contracts": {
+    "wrappedDOS": "0xc647CCF449DEc38Bb8B7272e60fc14B3548c9547",
+    "contractNamerImplementation": "0x069056B2Ae8fD8c071efb827c5AF73A0996840E1",
+    "contractNamer": "0x030eec847cf5D9d1c4A0b4e0459d130D0B35577C",
+    "verifiableFactory": "0xB86bb608E6Afd7a8Eb209510c01BB859A7c315f1",
+    "labelStore": "0x38FC582690c3F28099087A88520056afAb08ce5F",
+    "rootRegistry": "0xb17Fec6fe18aC0b7F3dd934495E84eC06Cf88564",
+    "dosRegistry": "0x8A2730c903d93b2116Fab3d9110C7D585F7B5a91",
+    "reverseRegistry": "0x641Ee4711013EE40B34fAE860894227c4771F273",
+    "priceOracle": "0x1F31e05948769174dA256D0484b8f26cfD3d8c97",
+    "dosRegistrar": "0x27A3B7ff0EF7fB96D49eB50B069570F407387362",
+    "permissionedResolverImplementation": "0xfa579733d7C5A21B5D3C4399D3d6Ef89fc3A3720",
+    "userRegistryImplementation": "0x8291F1C6aEf2acBC58F3fe11C9e4EC0d3D4aE904",
+    "gatewayProvider": "0xCB20A0C349f079b8bD403ea8F668FE3DA49E981f",
+    "universalResolver": "0x5A34c9fB9806239Ed61f1570c51edb198333fbeA",
+    "reverseRegistrar": "0x3Cd8BdDeB177492c5e521c3B82179887f472f018"
+  }
+}
