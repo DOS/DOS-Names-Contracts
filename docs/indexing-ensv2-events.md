@@ -458,6 +458,13 @@ Multiple parent names can point to the same subregistry via `setSubregistry()`. 
 
 Children registered in `0xABC` appear under both parents. The token `wallet` in registry `0xABC` is simultaneously `wallet.sub1.sub2.parent.eth` and `wallet.linked.parent.eth` — they share the same tokenId.
 
+Because a Graph dynamic data source cannot replay blocks before its creation, an
+indexer must also retain the current child state for every discovered registry.
+When an already-known registry is attached to another parent, the indexer
+materializes those retained children under the new parent immediately. Event
+entity IDs must include the parent context so the two alias paths do not
+overwrite each other's history rows.
+
 ### Alias Resolution
 
 Aliases are a resolver-level concept, not a registry-level one:
