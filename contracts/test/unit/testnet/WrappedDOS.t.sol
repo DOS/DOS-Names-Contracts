@@ -95,9 +95,7 @@ contract WrappedDOSTest is Test {
 
         uint256 dosTokenId = deployment.names.rootRegistry.getTokenId(LibLabel.id("dos"));
         uint256 reverseTokenId = deployment.names.rootRegistry.getTokenId(LibLabel.id("reverse"));
-        uint256 smokeTokenId = deployment.names.dosRegistry.getTokenId(
-            LibLabel.id("bens-smoke")
-        );
+        uint256 smokeTokenId = deployment.names.dosRegistry.getTokenId(LibLabel.id("bens-smoke"));
         assertEq(deployment.names.rootRegistry.ownerOf(dosTokenId), protocolOwner);
         assertEq(deployment.names.rootRegistry.ownerOf(reverseTokenId), protocolOwner);
         assertEq(deployment.names.rootRegistry.roles(dosTokenId, address(deployer)), 0);

@@ -305,7 +305,8 @@ export function handleUserRegistrySubregistryUpdated(event: SubregistryUpdatedEv
     node,
     event.params.subregistry,
     event,
-    [event.address.toHexString()]
+    [event.address.toHexString()],
+    0
   );
 }
 
@@ -336,7 +337,8 @@ export function handleUserRegistryLabelUnregistered(event: LabelUnregisteredEven
     mapping.domain,
     Address.fromString(EMPTY_ADDRESS),
     event,
-    [event.address.toHexString()]
+    [event.address.toHexString()],
+    0
   );
   let zeroAccount = createOrLoadAccount(EMPTY_ADDRESS);
   domain.owner = zeroAccount.id;

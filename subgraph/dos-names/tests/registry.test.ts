@@ -722,7 +722,8 @@ test("detached registry sources retain current state for a later attachment", ()
     BOB_DOS,
     Address.fromString(USER_REGISTRY),
     subregistryUpdated(123),
-    []
+    [],
+    0
   );
 
   assert.fieldEquals("Domain", SUB_ALICE_DOS, "owner", ZERO_ADDRESS);
@@ -748,7 +749,8 @@ test("attaching a shared registry backfills existing children for the new parent
     BOB_DOS,
     Address.fromString(USER_REGISTRY),
     subregistryUpdated(123),
-    []
+    [],
+    0
   );
 
   assert.entityCount("TokenToDomain", 3);
@@ -778,7 +780,8 @@ test("backfilling multiple children preserves each ownership event", () => {
     BOB_DOS,
     Address.fromString(USER_REGISTRY),
     subregistryUpdated(123),
-    []
+    [],
+    0
   );
 
   assert.fieldEquals("Domain", SUB_BOB_DOS, "owner", OWNER);
@@ -828,7 +831,8 @@ test("shared registry events retain one history row per parent context", () => {
     BOB_DOS,
     Address.fromString(USER_REGISTRY),
     subregistryUpdated(123),
-    []
+    [],
+    0
   );
 
   handleUserRegistryTransferSingle(userRegistryTransfer(456));

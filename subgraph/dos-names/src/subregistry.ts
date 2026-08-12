@@ -33,7 +33,6 @@ import {
 } from "./utils";
 
 const MAX_REGISTRY_DEPTH = 32;
-const MAX_REGISTRY_CHILDREN = 10000;
 
 function childTokenId(registry: Address, tokenId: BigInt): string {
   return registry.toHexString().concat("-").concat(tokenIdToHex(tokenId));
@@ -283,9 +282,10 @@ function retireRegistryPath(
   ancestors: string[],
   depth: i32
 ): void {
-  if (depth >= MAX_REGISTRY_DEPTH) {
-    return;
-  }
+  assert(
+    depth < MAX_REGISTRY_DEPTH,
+    "ENSv2 registry nesting exceeds the supported depth"
+  );
   let registryAddress = registry.toHexString();
   if (ancestors.includes(registryAddress)) {
     return;
@@ -293,9 +293,15 @@ function retireRegistryPath(
   let nextAncestors = ancestors.concat([registryAddress]);
   let source = RegistrySource.load(registryAddress);
   let childId: string | null = source === null ? null : source.firstChild;
-  let visitedChildren = 0;
-  while (childId !== null && visitedChildren < MAX_REGISTRY_CHILDREN) {
-    let child = RegistryChild.load(childId as string);
+  let visitedChildren: string[] = [];
+  while (childId !== null) {
+    let currentId = childId as string;
+    assert(
+      !visitedChildren.includes(currentId),
+      "ENSv2 registry child list contains a cycle"
+    );
+    visitedChildren.push(currentId);
+    let child = RegistryChild.load(currentId);
     if (child === null) {
       break;
     }
@@ -318,7 +324,6 @@ function retireRegistryPath(
       scopedTokenId(registry, parentNode, child.tokenId)
     );
     childId = child.nextChild;
-    visitedChildren += 1;
   }
 }
 
@@ -349,8 +354,13 @@ export function updateSubregistry(
   parentNode: string,
   registry: Address,
   event: ethereum.Event,
-  ancestors: string[]
+  ancestors: string[],
+  depth: i32
 ): void {
+  assert(
+    depth < MAX_REGISTRY_DEPTH,
+    "ENSv2 registry nesting exceeds the supported depth"
+  );
   let path = RegistryPath.load(parentNode);
   let registryAddress = registry.toHexString();
 
@@ -362,7 +372,7 @@ export function updateSubregistry(
           Address.fromBytes(path.registry),
           event,
           ancestors,
-          0
+          depth
         );
       }
       path.active = false;
@@ -384,7 +394,7 @@ export function updateSubregistry(
       Address.fromBytes(path.registry),
       event,
       ancestors,
-      0
+      depth
     );
     path.active = false;
     path.save();
@@ -411,10 +421,15 @@ export function updateSubregistry(
   if (source !== null) {
     childId = source.firstChild;
   }
-  let visitedChildren = 0;
+  let visitedChildren: string[] = [];
   let nextAncestors = ancestors.concat([registryAddress]);
-  while (childId !== null && visitedChildren < MAX_REGISTRY_CHILDREN) {
+  while (childId !== null) {
     let currentId = childId as string;
+    assert(
+      !visitedChildren.includes(currentId),
+      "ENSv2 registry child list contains a cycle"
+    );
+    visitedChildren.push(currentId);
     let child = RegistryChild.load(currentId);
     if (child === null) {
       break;
@@ -428,10 +443,10 @@ export function updateSubregistry(
         node as string,
         Address.fromBytes(child.subregistry),
         event,
-        nextAncestors
+        nextAncestors,
+        depth + 1
       );
     }
     childId = child.nextChild;
-    visitedChildren += 1;
   }
 }
