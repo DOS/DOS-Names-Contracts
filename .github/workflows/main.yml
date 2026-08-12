@@ -115,7 +115,8 @@ jobs:
 
   subgraph-tests:
     name: DOS Names Subgraph
-    runs-on: ubuntu-latest
+    # Matchstick 0.6.0 publishes a Linux 22 binary but no Linux 24 binary.
+    runs-on: ubuntu-22.04
     defaults:
       run:
         working-directory: subgraph/dos-names
