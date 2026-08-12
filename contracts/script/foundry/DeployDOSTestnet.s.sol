@@ -44,7 +44,7 @@ contract DeployDOSTestnet is DeployDOS {
 
     /// @notice Broadcasts a testnet deployment using environment configuration.
     /// @dev Required env: `PRIVATE_KEY`, `OWNER`. Optional env: `BENEFICIARY`.
-    function run() external override returns (Deployment memory deployment) {
+    function run() external virtual override returns (Deployment memory deployment) {
         uint256 privateKey = vm.envUint("PRIVATE_KEY");
         address owner = vm.envAddress("OWNER");
         address beneficiary = vm.envOr("BENEFICIARY", owner);
