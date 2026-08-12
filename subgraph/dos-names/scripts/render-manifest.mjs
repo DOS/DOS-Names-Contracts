@@ -2,7 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-const EXPECTED_CHAIN_ID = 3939;
+const EXPECTED_CHAIN_IDS = new Set([3939, 7979]);
+const NETWORKS = new Map([
+  [3939, "dos-testnet"],
+  [7979, "dos-mainnet"],
+]);
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 const ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/;
 
@@ -16,8 +20,8 @@ const CONTRACT_PLACEHOLDERS = [
 ];
 
 export function validateDeployment(deployment) {
-  if (deployment?.chainId !== EXPECTED_CHAIN_ID) {
-    throw new Error(`chainId must be ${EXPECTED_CHAIN_ID}`);
+  if (!EXPECTED_CHAIN_IDS.has(deployment?.chainId)) {
+    throw new Error("chainId must be one of 3939, 7979");
   }
 
   if (
@@ -61,6 +65,13 @@ export function renderManifest(template, deployment) {
   validateDeployment(deployment);
 
   let rendered = template;
+  if (!rendered.includes("__NETWORK__")) {
+    throw new Error("template is missing __NETWORK__");
+  }
+  rendered = rendered.replaceAll(
+    "__NETWORK__",
+    NETWORKS.get(deployment.chainId),
+  );
   for (const [contractName, placeholder] of CONTRACT_PLACEHOLDERS) {
     if (!rendered.includes(placeholder)) {
       throw new Error(`template is missing ${placeholder}`);

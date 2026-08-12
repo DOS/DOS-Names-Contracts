@@ -18,6 +18,7 @@ const VALID_DEPLOYMENT = {
 };
 
 const TEMPLATE = `
+network: __NETWORK__
 registry: __DOS_REGISTRY_ADDRESS__
 registrar: __DOS_REGISTRAR_ADDRESS__
 resolver: __PERMISSIONED_RESOLVER_IMPLEMENTATION_ADDRESS__
@@ -31,13 +32,24 @@ test("renders every contract address and deployment block", () => {
   assert.match(rendered, /0x2222222222222222222222222222222222222222/);
   assert.match(rendered, /0x3333333333333333333333333333333333333333/);
   assert.match(rendered, /startBlock: 68/);
+  assert.match(rendered, /network: dos-testnet/);
   assert.doesNotMatch(rendered, /__[A-Z0-9_]+__/);
 });
 
-test("rejects a deployment for another chain", () => {
+test("accepts the canonical DOS Mainnet deployment", () => {
+  const deployment = {
+    ...VALID_DEPLOYMENT,
+    chainId: 7979,
+  };
+
+  assert.doesNotThrow(() => validateDeployment(deployment));
+  assert.match(renderManifest(TEMPLATE, deployment), /network: dos-mainnet/);
+});
+
+test("rejects a deployment for an unsupported chain", () => {
   assert.throws(
-    () => validateDeployment({ ...VALID_DEPLOYMENT, chainId: 7979 }),
-    /chainId must be 3939/,
+    () => validateDeployment({ ...VALID_DEPLOYMENT, chainId: 1 }),
+    /chainId must be one of 3939, 7979/,
   );
 });
 
@@ -102,7 +114,11 @@ test("rejects a zero contract address", () => {
 
 test("rejects a template missing a required placeholder", () => {
   assert.throws(
-    () => renderManifest("startBlock: __START_BLOCK__", VALID_DEPLOYMENT),
+    () =>
+      renderManifest(
+        "network: __NETWORK__\nstartBlock: __START_BLOCK__",
+        VALID_DEPLOYMENT,
+      ),
     /template is missing __DOS_REGISTRY_ADDRESS__/,
   );
 });

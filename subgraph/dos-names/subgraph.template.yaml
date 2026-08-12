@@ -7,7 +7,7 @@ dataSources:
   # Emits: NameRegistered, ResolverUpdated, ExpiryUpdated, SubregistryUpdated, ERC1155 transfers
   - kind: ethereum/contract
     name: DOSTLDRegistry
-    network: dos-testnet
+    network: __NETWORK__
     source:
       abi: PermissionedRegistry
       address: "__DOS_REGISTRY_ADDRESS__"
@@ -49,7 +49,7 @@ dataSources:
   # Emits: NameRegistered (with cost info), NameRenewed
   - kind: ethereum/contract
     name: DOSRegistrar
-    network: dos-testnet
+    network: __NETWORK__
     source:
       abi: DOSRegistrar
       address: "__DOS_REGISTRAR_ADDRESS__"
@@ -76,7 +76,7 @@ dataSources:
   # Emits: AddrChanged, AddressChanged, TextChanged, ContenthashChanged, etc.
   - kind: ethereum/contract
     name: Resolver
-    network: dos-testnet
+    network: __NETWORK__
     source:
       abi: PermissionedResolver
       address: "__PERMISSIONED_RESOLVER_IMPLEMENTATION_ADDRESS__"
@@ -116,7 +116,7 @@ dataSources:
 templates:
   - kind: ethereum/contract
     name: UserRegistryTemplate
-    network: dos-testnet
+    network: __NETWORK__
     source:
       abi: PermissionedRegistry
     mapping:
@@ -155,7 +155,7 @@ templates:
 
   - kind: ethereum/contract
     name: ResolverTemplate
-    network: dos-testnet
+    network: __NETWORK__
     source:
       abi: PermissionedResolver
     mapping:
