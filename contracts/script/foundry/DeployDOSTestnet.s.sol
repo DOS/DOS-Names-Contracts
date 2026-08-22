@@ -23,7 +23,7 @@ import {LibLabel} from "~src/utils/LibLabel.sol";
 /// @notice Deploys a standard wrapped-native WDOS token and the complete `.dos` ENSv2 stack.
 contract DeployDOSTestnet is DeployDOS {
     uint256 internal constant EXPECTED_CHAIN_ID = 3939;
-    address internal constant EXPECTED_DEPLOYER = 0x310Bc061214ee89aF5CfB28a6ebF96c5436fa3CD;
+    address internal constant EXPECTED_DEPLOYER = 0x99999e454138f6be73E2bE82c890bc5765749999;
     address internal constant EXPECTED_OWNER = 0x310Bc061214ee89aF5CfB28a6ebF96c5436fa3CD;
     uint256 internal constant MIN_DEPLOYMENT_BALANCE = 1 ether;
     string internal constant BENS_SMOKE_LABEL = "bens-smoke";
