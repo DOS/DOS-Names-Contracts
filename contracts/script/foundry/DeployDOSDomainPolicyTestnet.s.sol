@@ -11,7 +11,8 @@ import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
 
 /// @title Deploy DOS ID Domain Policy on DOS Testnet
 /// @notice Replaces the public Testnet registrar role with a policy-controlled registrar.
-/// @dev Required env: PRIVATE_KEY (the canonical registry owner) and DOS_DOMAIN_VOUCHER_SIGNER.
+/// @dev Required env: PRIVATE_KEY (the canonical registry owner), DOS_DOMAIN_VOUCHER_SIGNER,
+/// DOS_DOMAIN_REGISTRY, DOS_DOMAIN_PRICE_ORACLE, and DOS_DOMAIN_LEGACY_REGISTRAR.
 ///      No private voucher key is read by this deployment script.
 contract DeployDOSDomainPolicyTestnet is Script {
     ////////////////////////////////////////////////////////////////////////
@@ -24,6 +25,16 @@ contract DeployDOSDomainPolicyTestnet is Script {
         DOSPolicyRegistrar registrar;
     }
 
+    /// @notice Existing DOS Name contracts and policy configuration for this deployment.
+    struct DeploymentConfig {
+        PermissionedRegistry registry;
+        StandardRentPriceOracle priceOracle;
+        address legacyRegistrar;
+        address voucherSigner;
+        uint32 minimumScore;
+        address defaultResolver;
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // Constants
     ////////////////////////////////////////////////////////////////////////
@@ -33,15 +44,6 @@ contract DeployDOSDomainPolicyTestnet is Script {
 
     /// @dev Account that owns the deployed registry roles.
     address internal constant EXPECTED_OWNER = 0x310Bc061214ee89aF5CfB28a6ebF96c5436fa3CD;
-
-    /// @dev Existing `.dos` registry address.
-    address internal constant DOS_REGISTRY = 0x95366f1E44532F50c022aEefF708F424b7854173;
-
-    /// @dev Existing `.dos` rent price oracle address.
-    address internal constant PRICE_ORACLE = 0x2eE958BcF29d140cdf64ad767f32E2554B0CCfa6;
-
-    /// @dev Existing public registrar whose roles are retired by this script.
-    address internal constant LEGACY_DOS_REGISTRAR = 0x4E5B48aC8B221aAF8cFF070671CB6Eeea2122b5c;
 
     /// @dev Renewable period after a name expires.
     uint64 internal constant GRACE_PERIOD = 28 days;
@@ -56,8 +58,7 @@ contract DeployDOSDomainPolicyTestnet is Script {
     uint64 internal constant MIN_REGISTER_DURATION = 28 days;
 
     /// @dev Root roles moved from the legacy registrar to the policy registrar.
-    uint256 internal constant REGISTRAR_ROLES =
-        RegistryRolesLib.ROLE_REGISTRAR | RegistryRolesLib.ROLE_RENEW;
+    uint256 internal constant REGISTRAR_ROLES = RegistryRolesLib.ROLE_REGISTRAR | RegistryRolesLib.ROLE_RENEW;
 
     ////////////////////////////////////////////////////////////////////////
     // Errors
@@ -83,62 +84,80 @@ contract DeployDOSDomainPolicyTestnet is Script {
     /// @return deployment The deployed policy and policy-controlled registrar.
     function run() external returns (Deployment memory deployment) {
         uint256 privateKey = vm.envUint("PRIVATE_KEY");
-        address voucherSigner = vm.envAddress("DOS_DOMAIN_VOUCHER_SIGNER");
-        uint256 configuredMinimumScore = vm.envOr("DOS_DOMAIN_MINIMUM_SCORE", uint256(20));
-        address defaultResolver = vm.envOr("DOS_DOMAIN_DEFAULT_RESOLVER", address(0));
-        if (configuredMinimumScore > type(uint32).max) {
-            revert InvalidMinimumScore(configuredMinimumScore);
-        }
+        DeploymentConfig memory config = deploymentConfig();
+        preflight(vm.addr(privateKey), config);
 
-        address broadcaster = vm.addr(privateKey);
-        preflight(broadcaster);
-
-        PermissionedRegistry registry = PermissionedRegistry(DOS_REGISTRY);
         vm.startBroadcast(privateKey);
-        deployment.policy = new DosDomainPolicy(
-            registry,
-            EXPECTED_OWNER,
-            voucherSigner,
-            uint32(configuredMinimumScore),
-            defaultResolver
-        );
-        deployment.registrar = new DOSPolicyRegistrar(
-            EXPECTED_OWNER,
-            registry,
-            EXPECTED_OWNER,
-            StandardRentPriceOracle(PRICE_ORACLE),
-            GRACE_PERIOD,
-            MIN_COMMITMENT_AGE,
-            MAX_COMMITMENT_AGE,
-            MIN_REGISTER_DURATION,
-            address(deployment.policy)
-        );
-        registry.revokeRootRoles(REGISTRAR_ROLES, LEGACY_DOS_REGISTRAR);
-        registry.grantRootRoles(REGISTRAR_ROLES, address(deployment.registrar));
+        deployment.policy = deployPolicy(config);
+        deployment.registrar = deployRegistrar(config, deployment.policy);
+        config.registry.revokeRootRoles(REGISTRAR_ROLES, config.legacyRegistrar);
+        config.registry.grantRootRoles(REGISTRAR_ROLES, address(deployment.registrar));
         deployment.policy.setRegistrar(deployment.registrar);
         vm.stopBroadcast();
     }
 
+    /// @notice Reads and validates the runtime-specific contract configuration.
+    function deploymentConfig() internal view returns (DeploymentConfig memory config) {
+        uint256 configuredMinimumScore = vm.envOr("DOS_DOMAIN_MINIMUM_SCORE", uint256(20));
+        if (configuredMinimumScore > type(uint32).max) {
+            revert InvalidMinimumScore(configuredMinimumScore);
+        }
+
+        config = DeploymentConfig({
+            registry: PermissionedRegistry(vm.envAddress("DOS_DOMAIN_REGISTRY")),
+            priceOracle: StandardRentPriceOracle(vm.envAddress("DOS_DOMAIN_PRICE_ORACLE")),
+            legacyRegistrar: vm.envAddress("DOS_DOMAIN_LEGACY_REGISTRAR"),
+            voucherSigner: vm.envAddress("DOS_DOMAIN_VOUCHER_SIGNER"),
+            minimumScore: uint32(configuredMinimumScore),
+            defaultResolver: vm.envOr("DOS_DOMAIN_DEFAULT_RESOLVER", address(0))
+        });
+    }
+
+    /// @notice Deploys the score-gated policy contract.
+    function deployPolicy(DeploymentConfig memory config) internal returns (DosDomainPolicy) {
+        return new DosDomainPolicy(
+            config.registry, EXPECTED_OWNER, config.voucherSigner, config.minimumScore, config.defaultResolver
+        );
+    }
+
+    /// @notice Deploys the registrar that enforces the policy contract.
+    function deployRegistrar(DeploymentConfig memory config, DosDomainPolicy policy)
+        internal
+        returns (DOSPolicyRegistrar)
+    {
+        return new DOSPolicyRegistrar(
+            EXPECTED_OWNER,
+            config.registry,
+            EXPECTED_OWNER,
+            config.priceOracle,
+            GRACE_PERIOD,
+            MIN_COMMITMENT_AGE,
+            MAX_COMMITMENT_AGE,
+            MIN_REGISTER_DURATION,
+            address(policy)
+        );
+    }
+
     /// @notice Validates network, broadcaster, existing contracts, and legacy registrar roles before deployment.
     /// @param broadcaster The address derived from the transaction private key.
-    function preflight(address broadcaster) public view {
+    function preflight(address broadcaster, DeploymentConfig memory config) internal view {
         if (block.chainid != EXPECTED_CHAIN_ID) {
             revert UnexpectedChain(block.chainid, EXPECTED_CHAIN_ID);
         }
         if (broadcaster != EXPECTED_OWNER) {
             revert UnexpectedOwner(broadcaster, EXPECTED_OWNER);
         }
-        if (DOS_REGISTRY.code.length == 0) {
-            revert MissingContractCode(DOS_REGISTRY);
+        if (address(config.registry).code.length == 0) {
+            revert MissingContractCode(address(config.registry));
         }
-        if (PRICE_ORACLE.code.length == 0) {
-            revert MissingContractCode(PRICE_ORACLE);
+        if (address(config.priceOracle).code.length == 0) {
+            revert MissingContractCode(address(config.priceOracle));
         }
-        if (LEGACY_DOS_REGISTRAR.code.length == 0) {
-            revert MissingContractCode(LEGACY_DOS_REGISTRAR);
+        if (config.legacyRegistrar.code.length == 0) {
+            revert MissingContractCode(config.legacyRegistrar);
         }
-        if (!PermissionedRegistry(DOS_REGISTRY).hasRootRoles(REGISTRAR_ROLES, LEGACY_DOS_REGISTRAR)) {
-            revert LegacyRegistrarAlreadyRetired(LEGACY_DOS_REGISTRAR);
+        if (!config.registry.hasRootRoles(REGISTRAR_ROLES, config.legacyRegistrar)) {
+            revert LegacyRegistrarAlreadyRetired(config.legacyRegistrar);
         }
     }
 }

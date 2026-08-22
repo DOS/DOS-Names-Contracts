@@ -9,8 +9,8 @@ $ErrorActionPreference = "Stop"
 
 $expectedRpcUrl = "https://test.doschain.com"
 $expectedChainId = 3939
-$expectedGenesisHash = "0x36f98b2e8b3084d57efc46622a065c2a96ed51aca86ac229bce998be6b8abd2c"
-$expectedDeployer = "0x99999e454138f6be73e2be82c890bc5765749999"
+$expectedGenesisHash = "0x1f6dd88694681d79a3a56313f59de56b1b6555c8e06a2ef377084f1e897feef4"
+$expectedDeployer = "0x310bc061214ee89af5cfb28a6ebf96c5436fa3cd"
 $expectedOwner = "0x310bc061214ee89af5cfb28a6ebf96c5436fa3cd"
 $minimumBalanceWei = [System.Numerics.BigInteger]::Parse("1000000000000000000")
 
