@@ -58,7 +58,15 @@ contract DeployDOSDomainPolicyTestnet is Script {
     uint64 internal constant MIN_REGISTER_DURATION = 28 days;
 
     /// @dev Root roles moved from the legacy registrar to the policy registrar.
-    uint256 internal constant REGISTRAR_ROLES = RegistryRolesLib.ROLE_REGISTRAR | RegistryRolesLib.ROLE_RENEW;
+    uint256 internal constant REGISTRAR_ROLES =
+        RegistryRolesLib.ROLE_REGISTRAR | RegistryRolesLib.ROLE_RENEW;
+
+    /// @dev Root admin roles required to move the registrar permissions.
+    uint256 internal constant REGISTRAR_ADMIN_ROLES =
+        RegistryRolesLib.ROLE_REGISTRAR_ADMIN | RegistryRolesLib.ROLE_RENEW_ADMIN;
+
+    /// @dev Minimum native DOS balance required before broadcasting policy deployment.
+    uint256 internal constant MIN_DEPLOYMENT_BALANCE = 1 ether;
 
     ////////////////////////////////////////////////////////////////////////
     // Errors
@@ -74,12 +82,14 @@ contract DeployDOSDomainPolicyTestnet is Script {
     error LegacyRegistrarAlreadyRetired(address registrar);
     /// @dev Error selector: `0x16319300`
     error InvalidMinimumScore(uint256 value);
+    error MissingRegistrarAdmin(address owner);
+    error InsufficientDeploymentBalance(uint256 actual, uint256 required);
 
     ////////////////////////////////////////////////////////////////////////
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Deploys the policy and registrar, then atomically moves registrar roles per transaction.
+    /// @notice Deploys the policy and registrar, then grants and revokes registrar roles in separate transactions.
     /// @dev Policy subsidy funding is intentionally separate: seed it only after address verification.
     /// @return deployment The deployed policy and policy-controlled registrar.
     function run() external returns (Deployment memory deployment) {
@@ -90,8 +100,8 @@ contract DeployDOSDomainPolicyTestnet is Script {
         vm.startBroadcast(privateKey);
         deployment.policy = deployPolicy(config);
         deployment.registrar = deployRegistrar(config, deployment.policy);
-        config.registry.revokeRootRoles(REGISTRAR_ROLES, config.legacyRegistrar);
         config.registry.grantRootRoles(REGISTRAR_ROLES, address(deployment.registrar));
+        config.registry.revokeRootRoles(REGISTRAR_ROLES, config.legacyRegistrar);
         deployment.policy.setRegistrar(deployment.registrar);
         vm.stopBroadcast();
     }
@@ -103,21 +113,25 @@ contract DeployDOSDomainPolicyTestnet is Script {
             revert InvalidMinimumScore(configuredMinimumScore);
         }
 
-        config = DeploymentConfig({
-            registry: PermissionedRegistry(vm.envAddress("DOS_DOMAIN_REGISTRY")),
-            priceOracle: StandardRentPriceOracle(vm.envAddress("DOS_DOMAIN_PRICE_ORACLE")),
-            legacyRegistrar: vm.envAddress("DOS_DOMAIN_LEGACY_REGISTRAR"),
-            voucherSigner: vm.envAddress("DOS_DOMAIN_VOUCHER_SIGNER"),
-            minimumScore: uint32(configuredMinimumScore),
-            defaultResolver: vm.envOr("DOS_DOMAIN_DEFAULT_RESOLVER", address(0))
-        });
+        config = DeploymentConfig({registry: PermissionedRegistry(
+            vm.envAddress("DOS_DOMAIN_REGISTRY")
+        ), priceOracle: StandardRentPriceOracle(vm.envAddress("DOS_DOMAIN_PRICE_ORACLE")), legacyRegistrar: vm.envAddress(
+            "DOS_DOMAIN_LEGACY_REGISTRAR"
+        ), voucherSigner: vm.envAddress("DOS_DOMAIN_VOUCHER_SIGNER"), minimumScore: uint32(
+            configuredMinimumScore
+        ), defaultResolver: vm.envOr("DOS_DOMAIN_DEFAULT_RESOLVER", address(0))});
     }
 
     /// @notice Deploys the score-gated policy contract.
     function deployPolicy(DeploymentConfig memory config) internal returns (DosDomainPolicy) {
-        return new DosDomainPolicy(
-            config.registry, EXPECTED_OWNER, config.voucherSigner, config.minimumScore, config.defaultResolver
-        );
+        return
+            new DosDomainPolicy(
+                config.registry,
+                EXPECTED_OWNER,
+                config.voucherSigner,
+                config.minimumScore,
+                config.defaultResolver
+            );
     }
 
     /// @notice Deploys the registrar that enforces the policy contract.
@@ -125,27 +139,31 @@ contract DeployDOSDomainPolicyTestnet is Script {
         internal
         returns (DOSPolicyRegistrar)
     {
-        return new DOSPolicyRegistrar(
-            EXPECTED_OWNER,
-            config.registry,
-            EXPECTED_OWNER,
-            config.priceOracle,
-            GRACE_PERIOD,
-            MIN_COMMITMENT_AGE,
-            MAX_COMMITMENT_AGE,
-            MIN_REGISTER_DURATION,
-            address(policy)
-        );
+        return
+            new DOSPolicyRegistrar(
+                EXPECTED_OWNER,
+                config.registry,
+                EXPECTED_OWNER,
+                config.priceOracle,
+                GRACE_PERIOD,
+                MIN_COMMITMENT_AGE,
+                MAX_COMMITMENT_AGE,
+                MIN_REGISTER_DURATION,
+                address(policy)
+            );
     }
 
     /// @notice Validates network, broadcaster, existing contracts, and legacy registrar roles before deployment.
     /// @param broadcaster The address derived from the transaction private key.
-    function preflight(address broadcaster, DeploymentConfig memory config) internal view {
+    function preflight(address broadcaster, DeploymentConfig memory config) public view {
         if (block.chainid != EXPECTED_CHAIN_ID) {
             revert UnexpectedChain(block.chainid, EXPECTED_CHAIN_ID);
         }
         if (broadcaster != EXPECTED_OWNER) {
             revert UnexpectedOwner(broadcaster, EXPECTED_OWNER);
+        }
+        if (broadcaster.balance < MIN_DEPLOYMENT_BALANCE) {
+            revert InsufficientDeploymentBalance(broadcaster.balance, MIN_DEPLOYMENT_BALANCE);
         }
         if (address(config.registry).code.length == 0) {
             revert MissingContractCode(address(config.registry));
@@ -158,6 +176,9 @@ contract DeployDOSDomainPolicyTestnet is Script {
         }
         if (!config.registry.hasRootRoles(REGISTRAR_ROLES, config.legacyRegistrar)) {
             revert LegacyRegistrarAlreadyRetired(config.legacyRegistrar);
+        }
+        if (!config.registry.hasRootRoles(REGISTRAR_ADMIN_ROLES, broadcaster)) {
+            revert MissingRegistrarAdmin(broadcaster);
         }
     }
 }
