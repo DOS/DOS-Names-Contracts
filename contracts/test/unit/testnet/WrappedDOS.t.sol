@@ -23,7 +23,7 @@ contract WrappedDOSTest is Test {
     bytes32 internal constant ADDR_CHANGED_TOPIC = keccak256("AddrChanged(bytes32,address)");
     bytes32 internal constant ADDRESS_CHANGED_TOPIC =
         keccak256("AddressChanged(bytes32,uint256,bytes)");
-    address internal constant TESTNET_DEPLOYER = 0x310Bc061214ee89aF5CfB28a6ebF96c5436fa3CD;
+    address internal constant TESTNET_DEPLOYER = 0x99999e454138f6be73E2bE82c890bc5765749999;
     address internal constant PROTOCOL_OWNER = 0x310Bc061214ee89aF5CfB28a6ebF96c5436fa3CD;
     WrappedDOS internal wdos;
     address internal holder = makeAddr("holder");
