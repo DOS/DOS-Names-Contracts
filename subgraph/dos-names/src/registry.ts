@@ -32,6 +32,7 @@ import {
   NewOwner,
   NewResolver,
   Registration,
+  RegistrarSource,
   Resolver,
   ResolverSource,
   TokenToDomain,
@@ -39,7 +40,7 @@ import {
   WrappedDomain,
   WrappedTransfer,
 } from "./types/schema";
-import { ResolverTemplate } from "./types/templates";
+import { RegistrarTemplate, ResolverTemplate } from "./types/templates";
 import { updateSubregistry } from "./subregistry";
 
 import {
@@ -81,6 +82,8 @@ export function handleLabelRegistered(event: LabelRegisteredEvent): void {
   if (!checkValidLabel(label)) {
     return;
   }
+
+  discoverRegistrar(event.params.sender);
 
   // Compute the domain node (namehash) = keccak256(dosNode || labelHash)
   let node = crypto.keccak256(concat(dosNode, labelHash)).toHexString();
@@ -165,6 +168,19 @@ export function handleLabelRegistered(event: LabelRegisteredEvent): void {
   domainEvent.domain = node;
   domainEvent.owner = account.id;
   domainEvent.save();
+}
+
+/** Adds each registrar only once so its pricing and renewal events are indexed. */
+function discoverRegistrar(registrarAddress: Address): void {
+  let sourceId = registrarAddress.toHexString();
+  if (RegistrarSource.load(sourceId) !== null) {
+    return;
+  }
+
+  let source = new RegistrarSource(sourceId);
+  source.address = registrarAddress;
+  source.save();
+  RegistrarTemplate.create(registrarAddress);
 }
 
 /**

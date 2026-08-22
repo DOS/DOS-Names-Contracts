@@ -664,6 +664,14 @@ test("token regeneration preserves the canonical domain mapping", () => {
   );
 });
 
+test("registrar discovery creates one source for repeated registrations", () => {
+  handleLabelRegistered(registration(123));
+  handleLabelRegistered(registration(456));
+
+  assert.entityCount("RegistrarSource", 1);
+  assert.fieldEquals("RegistrarSource", OWNER, "address", OWNER);
+});
+
 test("zero-value transfers do not change top-level ownership", () => {
   handleLabelRegistered(registration(123));
 

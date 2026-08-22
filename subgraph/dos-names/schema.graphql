@@ -354,3 +354,9 @@ type ResolverSource @entity {
   id: ID!
   address: Bytes!
 }
+
+"Tracks registrar addresses already registered as dynamic data sources"
+type RegistrarSource @entity {
+  id: ID!
+  address: Bytes!
+}
