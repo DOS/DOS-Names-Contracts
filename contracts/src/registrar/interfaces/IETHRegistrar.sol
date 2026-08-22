@@ -8,7 +8,7 @@ import {IRegistry} from "../../registry/interfaces/IRegistry.sol";
 import {IETHRenewer} from "./IETHRenewer.sol";
 
 /// @notice Interface for registering ".eth" names.
-/// @dev Interface selector: `0xc1401b80`
+/// @dev Interface selector: `0x4d8b8526`
 interface IETHRegistrar is IETHRenewer {
     ////////////////////////////////////////////////////////////////////////
     // Events
@@ -98,6 +98,9 @@ interface IETHRegistrar is IETHRenewer {
     /// @param commitment The commitment hash.
     /// @return The commitment time, in seconds, or 0 if unknown.
     function commitmentAt(bytes32 commitment) external view returns (uint64);
+
+    /// @notice Maximum age of a valid commitment in seconds.
+    function MAX_COMMITMENT_AGE() external view returns (uint64);
 
     /// @notice Determine register price for a name.
     /// @param label The name to register.

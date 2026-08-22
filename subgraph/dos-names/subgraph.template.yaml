@@ -24,6 +24,7 @@ dataSources:
         - RegistryChild
         - RegistryChildToken
         - RegistrySource
+        - RegistrarSource
       abis:
         - name: PermissionedRegistry
           file: ./abis/PermissionedRegistry.json
@@ -189,3 +190,29 @@ templates:
           handler: handlePubkeyChanged
         - event: VersionChanged(indexed bytes32,uint64)
           handler: handleVersionChanged
+
+  # Registrars are discovered from PermissionedRegistry.LabelRegistered.sender.
+  # Registry emits that event before the registrar's NameRegistered event, so the
+  # template captures fee and renewal metadata for the same registration transaction.
+  - kind: ethereum/contract
+    name: RegistrarTemplate
+    network: __NETWORK__
+    source:
+      abi: DOSRegistrar
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      file: ./src/registrar.ts
+      entities:
+        - Registration
+        - NameRegistered
+        - NameRenewed
+      abis:
+        - name: DOSRegistrar
+          file: ./abis/DOSRegistrar.json
+      eventHandlers:
+        - event: NameRegistered(indexed uint256,string,address,address,address,uint64,address,indexed bytes32,uint256,uint256)
+          handler: handleNameRegisteredByRegistrar
+        - event: NameRenewed(indexed uint256,string,uint64,uint64,address,indexed bytes32,uint256)
+          handler: handleNameRenewedByRegistrar

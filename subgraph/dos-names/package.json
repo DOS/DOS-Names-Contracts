@@ -10,7 +10,7 @@
     "render:test": "node scripts/render-manifest.mjs tests/fixtures/dos-testnet-3939.json subgraph.template.yaml subgraph.yaml",
     "render:deployment": "node scripts/render-manifest.mjs ../../contracts/deployments/dos-testnet-3939.json subgraph.template.yaml subgraph.yaml",
     "render:mainnet": "node scripts/render-manifest.mjs ../../contracts/deployments/dos-mainnet-7979.json subgraph.template.yaml subgraph.yaml",
-    "test": "graph test",
+    "test": "graph test --version 0.5.2",
     "test:render": "node --test tests/render-manifest.test.mjs"
   },
   "devDependencies": {

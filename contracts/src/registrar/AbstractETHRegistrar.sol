@@ -83,14 +83,9 @@ abstract contract AbstractETHRegistrar is Ownable, ERC165, IETHRenewer {
     /// @inheritdoc IETHRenewer
     function renew(string calldata label, uint64 duration, IERC20 paymentToken, bytes32 referrer)
         external
+        virtual
     {
-        IPermissionedRegistry.State memory state = _requireRenewable(label, duration); // reverts if not
-        uint64 newExpiry = state.expiry + duration; // reverts if overflow
-        uint256 amount = rentPriceOracle.getRenewPrice(label, state.expiry, duration, paymentToken); // reverts if invalid
-        SafeERC20.safeTransferFrom(paymentToken, msg.sender, BENEFICIARY, amount); // reverts if payment failed
-        ETH_REGISTRY.renew(state.tokenId, newExpiry);
-        _onRenew(label, duration);
-        emit NameRenewed(state.tokenId, label, duration, newExpiry, paymentToken, referrer, amount);
+        _renew(label, duration, paymentToken, referrer);
     }
 
     /// @inheritdoc IETHRenewer
@@ -116,6 +111,19 @@ abstract contract AbstractETHRegistrar is Ownable, ERC165, IETHRenewer {
     ////////////////////////////////////////////////////////////////////////
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Performs a renewal after any derived registrar authorization check.
+    function _renew(string calldata label, uint64 duration, IERC20 paymentToken, bytes32 referrer)
+        internal
+    {
+        IPermissionedRegistry.State memory state = _requireRenewable(label, duration); // reverts if not
+        uint64 newExpiry = state.expiry + duration; // reverts if overflow
+        uint256 amount = rentPriceOracle.getRenewPrice(label, state.expiry, duration, paymentToken); // reverts if invalid
+        SafeERC20.safeTransferFrom(paymentToken, msg.sender, BENEFICIARY, amount); // reverts if payment failed
+        ETH_REGISTRY.renew(state.tokenId, newExpiry);
+        _onRenew(label, duration);
+        emit NameRenewed(state.tokenId, label, duration, newExpiry, paymentToken, referrer, amount);
+    }
 
     /// @dev Callback for when a name is renewed.
     function _onRenew(string calldata label, uint64 duration) internal virtual {}

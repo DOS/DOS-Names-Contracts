@@ -131,6 +131,75 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
         bytes32 referrer
     )
         external
+        virtual
+        returns (uint256 tokenId)
+    {
+        return
+            _register(label, owner, secret, subregistry, resolver, duration, paymentToken, referrer);
+    }
+
+    /// @inheritdoc IETHRegistrar
+    function isAvailable(string calldata label) external view returns (bool) {
+        return _isAvailable(ETH_REGISTRY.getState(LibLabel.id(label)));
+    }
+
+    /// @inheritdoc IETHRegistrar
+    function getRegisterPrice(string calldata label, uint64 duration, IERC20 paymentToken)
+        external
+        view
+        returns (uint256 base, uint256 premium)
+    {
+        return
+            rentPriceOracle.getRegisterPrice(
+                label,
+                _availablePeriod(_requireAvailable(label, duration).expiry),
+                duration,
+                paymentToken
+            );
+    }
+
+    /// @inheritdoc IETHRenewer
+    function getRemainingGracePeriod(string calldata label) external view returns (uint64) {
+        IPermissionedRegistry.State memory state = ETH_REGISTRY.getState(LibLabel.id(label));
+        return
+            uint64(_isRenewableGrace(state) ? GRACE_PERIOD - (block.timestamp - state.expiry) : 0);
+    }
+
+    /// @inheritdoc IETHRegistrar
+    function makeCommitment(
+        string calldata label,
+        address owner,
+        bytes32 secret,
+        IRegistry subregistry,
+        address resolver,
+        uint64 duration,
+        bytes32 referrer
+    )
+        public
+        pure
+        override
+        returns (bytes32)
+    {
+        return
+            keccak256(abi.encode(label, owner, secret, subregistry, resolver, duration, referrer));
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Internal Functions
+    ////////////////////////////////////////////////////////////////////////
+
+    /// @dev Performs registration after any derived registrar authorization check.
+    function _register(
+        string calldata label,
+        address owner,
+        bytes32 secret,
+        IRegistry subregistry,
+        address resolver,
+        uint64 duration,
+        IERC20 paymentToken,
+        bytes32 referrer
+    )
+        internal
         returns (uint256 tokenId)
     {
         if (owner == address(0)) {
@@ -169,60 +238,6 @@ contract ETHRegistrar is AbstractETHRegistrar, IETHRegistrar {
             premium
         );
     }
-
-    /// @inheritdoc IETHRegistrar
-    function isAvailable(string calldata label) external view returns (bool) {
-        return _isAvailable(ETH_REGISTRY.getState(LibLabel.id(label)));
-    }
-
-    /// @inheritdoc IETHRegistrar
-    function getRegisterPrice(string calldata label, uint64 duration, IERC20 paymentToken)
-        external
-        view
-        returns (uint256 base, uint256 premium)
-    {
-        return
-            rentPriceOracle.getRegisterPrice(
-                label,
-                _availablePeriod(_requireAvailable(label, duration).expiry),
-                duration,
-                paymentToken
-            );
-    }
-
-    /// @inheritdoc IETHRenewer
-    function getRemainingGracePeriod(string calldata label) external view returns (uint64) {
-        IPermissionedRegistry.State memory state = ETH_REGISTRY.getState(LibLabel.id(label));
-        return
-            uint64(
-                _isRenewableGrace(state)
-                    ? GRACE_PERIOD - (block.timestamp - state.expiry)
-                    : 0
-            );
-    }
-
-    /// @inheritdoc IETHRegistrar
-    function makeCommitment(
-        string calldata label,
-        address owner,
-        bytes32 secret,
-        IRegistry subregistry,
-        address resolver,
-        uint64 duration,
-        bytes32 referrer
-    )
-        public
-        pure
-        override
-        returns (bytes32)
-    {
-        return
-            keccak256(abi.encode(label, owner, secret, subregistry, resolver, duration, referrer));
-    }
-
-    ////////////////////////////////////////////////////////////////////////
-    // Internal Functions
-    ////////////////////////////////////////////////////////////////////////
 
     /// @dev Validates that the given `commitment` was recorded within the allowed time window
     ///      (between minimum and maximum commitment age), then deletes it so it cannot be reused.
