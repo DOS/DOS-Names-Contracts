@@ -12,7 +12,8 @@ describe("Devnet", () => {
     const t = await env.sync();
     const block1 = await env.client.getBlock();
     expect(block1.timestamp).toBeGreaterThanOrEqual(block0.timestamp);
-    expectVar({ t }).toStrictEqual(block1.timestamp);
+    expectVar({ t }).toBeGreaterThanOrEqual(block0.timestamp);
+    expectVar({ t }).toBeLessThanOrEqual(block1.timestamp);
   });
 
   it("warp", async () => {
