@@ -11,8 +11,9 @@ import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
 
 /// @title Deploy DOS ID Domain Policy on DOS Testnet
 /// @notice Replaces the public Testnet registrar role with a policy-controlled registrar.
-/// @dev Required env: PRIVATE_KEY (the canonical registry owner), DOS_DOMAIN_VOUCHER_SIGNER,
-/// DOS_DOMAIN_REGISTRY, DOS_DOMAIN_PRICE_ORACLE, and DOS_DOMAIN_LEGACY_REGISTRAR.
+/// @dev Required env: PRIVATE_KEY (the testnet admin 0x99999e45; Secret Manager
+///      dos-deployer-99999e45-private-key), DOS_DOMAIN_VOUCHER_SIGNER, DOS_DOMAIN_REGISTRY,
+///      DOS_DOMAIN_PRICE_ORACLE, and DOS_DOMAIN_LEGACY_REGISTRAR.
 ///      No private voucher key is read by this deployment script.
 contract DeployDOSDomainPolicyTestnet is Script {
     ////////////////////////////////////////////////////////////////////////
@@ -42,8 +43,11 @@ contract DeployDOSDomainPolicyTestnet is Script {
     /// @dev Expected DOS Testnet chain ID.
     uint256 internal constant EXPECTED_CHAIN_ID = 3939;
 
-    /// @dev Account that owns the deployed registry roles.
-    address internal constant EXPECTED_OWNER = 0x310Bc061214ee89aF5CfB28a6ebF96c5436fa3CD;
+    /// @dev Testnet admin that broadcasts this deployment and owns the policy and registrar.
+    ///      The Ledger owner 0x310Bc granted it the registrar admin roles once, on testnet only
+    ///      (owner-approved 2026-10-21), so testnet operations do not need the hardware wallet.
+    ///      Mainnet keeps the Ledger owner.
+    address internal constant EXPECTED_OWNER = 0x99999e454138f6be73E2bE82c890bc5765749999;
 
     /// @dev Renewable period after a name expires.
     uint64 internal constant GRACE_PERIOD = 28 days;
