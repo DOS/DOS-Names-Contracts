@@ -31,5 +31,24 @@
     "universalResolver": "0xbd0f96e3E8510a1bb806cAA9836fc76dfb1a5c47",
     "reverseRegistrar": "0xD445f533aeC6E8BAE185f9903943e7B2E655472e",
     "smokeResolver": "0xf2de697266073C4ba4D546d4305c228BBF5B1813"
+  },
+  "domainPolicy": {
+    "deployedAt": "2026-10-21",
+    "deploymentBlock": 177,
+    "finalDeploymentBlock": 181,
+    "admin": "0x99999e454138f6be73E2bE82c890bc5765749999",
+    "adminGrantTransaction": "0x467cec3cdaef51dde39dfff02baf99d19f7d2dbfe6208a8be058fe387a02a6f8",
+    "voucherSigner": "0x257958FF376B6C340ea2BDFCCc8e7d6420Fbb5f4",
+    "minimumScore": 20,
+    "policy": "0xBF613B2c72E9595204767AD9f6c0b47834Ccd3a2",
+    "registrar": "0xb4A8DbcA69b2FB8d57049c28c4c7e10a77197785",
+    "retiredRegistrar": "0x4E5B48aC8B221aAF8cFF070671CB6Eeea2122b5c",
+    "transactions": [
+      "0x3b85bc4b5597fa037159dc8f029fe5c6630a4d38379c30b2b60eb525952bdb43",
+      "0x383629c325cafc23db749b00218351be30376bda13c9957a4fbbf5d56868a29f",
+      "0xbcf971d1ed48aff55ab0e98326f4e21468944320d4b36c17a5a1718d5429633d",
+      "0xe5fb969213435a87df1d3a479ca83e0997c8ebcbcc4e4136a9afb2c810087f36",
+      "0x65e71e8d9bbb6cc27a40ad94a28f69baf61d07a677aa6ac6eefcbd2178b18184"
+    ]
   }
 }
