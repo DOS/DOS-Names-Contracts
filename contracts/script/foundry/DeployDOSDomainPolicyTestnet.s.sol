@@ -156,7 +156,7 @@ contract DeployDOSDomainPolicyTestnet is Script {
     }
 
     /// @notice Validates network, broadcaster, existing contracts, and legacy registrar roles before deployment.
-    /// @param broadcaster The address derived from the transaction private key.
+    /// @param broadcaster The script sender (`--sender`), which the Ledger must control.
     function preflight(address broadcaster, DeploymentConfig memory config) public view {
         if (block.chainid != EXPECTED_CHAIN_ID) {
             revert UnexpectedChain(block.chainid, EXPECTED_CHAIN_ID);
