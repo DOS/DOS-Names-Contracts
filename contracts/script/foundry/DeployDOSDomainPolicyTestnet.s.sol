@@ -11,9 +11,9 @@ import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
 
 /// @title Deploy DOS ID Domain Policy on DOS Testnet
 /// @notice Replaces the public Testnet registrar role with a policy-controlled registrar.
-/// @dev Required env: PRIVATE_KEY (the canonical registry owner), DOS_DOMAIN_VOUCHER_SIGNER,
-/// DOS_DOMAIN_REGISTRY, DOS_DOMAIN_PRICE_ORACLE, and DOS_DOMAIN_LEGACY_REGISTRAR.
-///      No private voucher key is read by this deployment script.
+/// @dev Signed by the canonical registry owner's Ledger (`forge script --ledger --sender <owner>`).
+///      Required env: DOS_DOMAIN_VOUCHER_SIGNER, DOS_DOMAIN_REGISTRY, DOS_DOMAIN_PRICE_ORACLE, and
+///      DOS_DOMAIN_LEGACY_REGISTRAR. No private key of any kind is read by this deployment script.
 contract DeployDOSDomainPolicyTestnet is Script {
     ////////////////////////////////////////////////////////////////////////
     // Types
@@ -93,11 +93,13 @@ contract DeployDOSDomainPolicyTestnet is Script {
     /// @dev Policy subsidy funding is intentionally separate: seed it only after address verification.
     /// @return deployment The deployed policy and policy-controlled registrar.
     function run() external returns (Deployment memory deployment) {
-        uint256 privateKey = vm.envUint("PRIVATE_KEY");
+        // The canonical owner is a Ledger: run with `--ledger --sender <owner>`, so no private key
+        // ever reaches disk or the environment. preflight rejects any other sender.
+        address broadcaster = msg.sender;
         DeploymentConfig memory config = deploymentConfig();
-        preflight(vm.addr(privateKey), config);
+        preflight(broadcaster, config);
 
-        vm.startBroadcast(privateKey);
+        vm.startBroadcast(broadcaster);
         deployment.policy = deployPolicy(config);
         deployment.registrar = deployRegistrar(config, deployment.policy);
         config.registry.grantRootRoles(REGISTRAR_ROLES, address(deployment.registrar));
