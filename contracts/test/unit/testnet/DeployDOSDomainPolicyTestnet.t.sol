@@ -10,7 +10,7 @@ import {StandardRentPriceOracleFixture} from "~test/fixtures/StandardRentPriceOr
 import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
 
 contract DeployDOSDomainPolicyTestnetTest is V2Fixture, StandardRentPriceOracleFixture {
-    address internal constant EXPECTED_OWNER = 0x310Bc061214ee89aF5CfB28a6ebF96c5436fa3CD;
+    address internal constant EXPECTED_OWNER = 0x99999e454138f6be73E2bE82c890bc5765749999;
     uint256 internal constant REGISTRAR_ROLES =
         RegistryRolesLib.ROLE_REGISTRAR | RegistryRolesLib.ROLE_RENEW;
     uint256 internal constant REGISTRAR_ADMIN_ROLES =

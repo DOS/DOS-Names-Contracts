@@ -11,9 +11,10 @@ import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
 
 /// @title Deploy DOS ID Domain Policy on DOS Testnet
 /// @notice Replaces the public Testnet registrar role with a policy-controlled registrar.
-/// @dev Signed by the canonical registry owner's Ledger (`forge script --ledger --sender <owner>`).
-///      Required env: DOS_DOMAIN_VOUCHER_SIGNER, DOS_DOMAIN_REGISTRY, DOS_DOMAIN_PRICE_ORACLE, and
-///      DOS_DOMAIN_LEGACY_REGISTRAR. No private key of any kind is read by this deployment script.
+/// @dev Required env: PRIVATE_KEY (the testnet admin 0x99999e45; Secret Manager
+///      dos-deployer-99999e45-private-key), DOS_DOMAIN_VOUCHER_SIGNER,
+/// DOS_DOMAIN_REGISTRY, DOS_DOMAIN_PRICE_ORACLE, and DOS_DOMAIN_LEGACY_REGISTRAR.
+///      No private voucher key is read by this deployment script.
 contract DeployDOSDomainPolicyTestnet is Script {
     ////////////////////////////////////////////////////////////////////////
     // Types
@@ -43,7 +44,10 @@ contract DeployDOSDomainPolicyTestnet is Script {
     uint256 internal constant EXPECTED_CHAIN_ID = 3939;
 
     /// @dev Account that owns the deployed registry roles.
-    address internal constant EXPECTED_OWNER = 0x310Bc061214ee89aF5CfB28a6ebF96c5436fa3CD;
+    /// @dev Testnet admin. The Ledger owner 0x310Bc delegates the registrar admin roles to the
+    ///      deployer on testnet only (owner-approved 2026-10-21), so testnet operations do not
+    ///      need the hardware wallet. Mainnet keeps the Ledger owner.
+    address internal constant EXPECTED_OWNER = 0x99999e454138f6be73E2bE82c890bc5765749999;
 
     /// @dev Renewable period after a name expires.
     uint64 internal constant GRACE_PERIOD = 28 days;
@@ -93,13 +97,11 @@ contract DeployDOSDomainPolicyTestnet is Script {
     /// @dev Policy subsidy funding is intentionally separate: seed it only after address verification.
     /// @return deployment The deployed policy and policy-controlled registrar.
     function run() external returns (Deployment memory deployment) {
-        // The canonical owner is a Ledger: run with `--ledger --sender <owner>`, so no private key
-        // ever reaches disk or the environment. preflight rejects any other sender.
-        address broadcaster = msg.sender;
+        uint256 privateKey = vm.envUint("PRIVATE_KEY");
         DeploymentConfig memory config = deploymentConfig();
-        preflight(broadcaster, config);
+        preflight(vm.addr(privateKey), config);
 
-        vm.startBroadcast(broadcaster);
+        vm.startBroadcast(privateKey);
         deployment.policy = deployPolicy(config);
         deployment.registrar = deployRegistrar(config, deployment.policy);
         config.registry.grantRootRoles(REGISTRAR_ROLES, address(deployment.registrar));
@@ -156,7 +158,7 @@ contract DeployDOSDomainPolicyTestnet is Script {
     }
 
     /// @notice Validates network, broadcaster, existing contracts, and legacy registrar roles before deployment.
-    /// @param broadcaster The script sender (`--sender`), which the Ledger must control.
+    /// @param broadcaster The address derived from the transaction private key.
     function preflight(address broadcaster, DeploymentConfig memory config) public view {
         if (block.chainid != EXPECTED_CHAIN_ID) {
             revert UnexpectedChain(block.chainid, EXPECTED_CHAIN_ID);

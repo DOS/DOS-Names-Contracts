@@ -1,8 +1,6 @@
 [CmdletBinding()]
 param(
     [string]$RpcUrl = "https://test.doschain.com",
-    # Ledger derivation path of the owner account; Foundry's default is used when empty.
-    [string]$LedgerHdPath = "",
     [switch]$Broadcast
 )
 
@@ -12,9 +10,10 @@ $ErrorActionPreference = "Stop"
 $expectedRpcUrl = "https://test.doschain.com"
 $expectedChainId = 3939
 $expectedGenesisHash = "0x36f98b2e8b3084d57efc46622a065c2a96ed51aca86ac229bce998be6b8abd2c"
-$expectedOwner = "0x310bc061214ee89af5cfb28a6ebf96c5436fa3cd"
+$expectedOwner = "0x99999e454138f6be73e2be82c890bc5765749999"
 $minimumBalanceWei = [System.Numerics.BigInteger]::Parse("1000000000000000000")
 $requiredEnvironmentVariables = @(
+    "PRIVATE_KEY",
     "DOS_DOMAIN_VOUCHER_SIGNER",
     "DOS_DOMAIN_REGISTRY",
     "DOS_DOMAIN_PRICE_ORACLE",
@@ -48,6 +47,15 @@ foreach ($name in $requiredEnvironmentVariables) {
     }
 }
 
+$privateKey = $env:PRIVATE_KEY.Trim()
+if ($privateKey -match "^[0-9a-fA-F]{64}$") {
+    $privateKey = "0x$privateKey"
+}
+if ($privateKey -notmatch "^0x[0-9a-fA-F]{64}$") {
+    throw "PRIVATE_KEY must be a 32-byte hexadecimal value"
+}
+$env:PRIVATE_KEY = $privateKey
+
 $cast = Resolve-FoundryCommand -Name "cast"
 $forge = Resolve-FoundryCommand -Name "forge"
 
@@ -73,10 +81,8 @@ if ($balance -lt $minimumBalanceWei) {
 $contractsRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 Push-Location $contractsRoot
 try {
-    # Simulation needs only the owner address; the Ledger signs nothing until -Broadcast.
     & $forge script "script/foundry/DeployDOSDomainPolicyTestnet.s.sol:DeployDOSDomainPolicyTestnet" `
         --rpc-url $RpcUrl `
-        --sender $expectedOwner `
         --slow
     if ($LASTEXITCODE -ne 0) {
         throw "Foundry simulation failed"
@@ -87,13 +93,8 @@ try {
         return
     }
 
-    $ledgerArguments = @("--ledger", "--sender", $expectedOwner)
-    if (-not [string]::IsNullOrWhiteSpace($LedgerHdPath)) {
-        $ledgerArguments += @("--hd-paths", $LedgerHdPath)
-    }
     & $forge script "script/foundry/DeployDOSDomainPolicyTestnet.s.sol:DeployDOSDomainPolicyTestnet" `
         --rpc-url $RpcUrl `
-        @ledgerArguments `
         --broadcast `
         --slow
     if ($LASTEXITCODE -ne 0) {
