@@ -135,6 +135,9 @@ jobs:
       - name: Test manifest rendering
         run: npm run test:render
 
+      - name: Test Testnet ENSv2 metadata adapter
+        run: node --test adapter/server.test.mjs
+
       - name: Render test manifest
         run: npm run render:test
 
