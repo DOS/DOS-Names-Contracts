@@ -96,6 +96,22 @@ test("rejects numeric token IDs rather than accepting rounded JSON numbers", asy
   );
 });
 
+test("unregistered and detached names retain metadata without a nonexistent NFT", async () => {
+  for (const name of ["bens-smoke.dos", "child.bens-smoke.dos"]) {
+    const value = { ...domain(), name };
+    const removed = {
+      ...graphDomain(),
+      name,
+      tokenId: null,
+      owner: { id: "0x0000000000000000000000000000000000000000" },
+      wrappedOwner: { id: "0x0000000000000000000000000000000000000000" },
+    };
+    const result = await rewriteMetadata(value, config, async () => removed);
+    assert.deepEqual(result.tokens, []);
+    assert.equal(result.name, name);
+  }
+});
+
 test("preserves a subdomain registry and reads regenerated token IDs without a stale cache", async () => {
   const child = "0x1111111111111111111111111111111111111111";
   const value = domain();

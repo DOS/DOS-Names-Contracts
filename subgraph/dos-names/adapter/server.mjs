@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 const MAX_BYTES = 2 * 1024 * 1024;
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 const DOMAIN_ID = /^0x[0-9a-fA-F]{64}$/;
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 const MAX_UINT256 = (1n << 256n) - 1n;
 
 export function validateDeployment(deployment) {
@@ -42,7 +43,18 @@ export async function rewriteMetadata(value, config, lookup) {
         const indexed = await lookup(item.id);
         if (
           indexed?.id?.toLowerCase() !== item.id.toLowerCase() ||
-          indexed?.name !== item.name ||
+          indexed?.name !== item.name
+        )
+          throw new Error("Canonical ENSv2 domain identity is unavailable");
+        if (
+          indexed.tokenId === null &&
+          indexed.owner?.id?.toLowerCase() === ZERO_ADDRESS &&
+          indexed.wrappedOwner?.id?.toLowerCase() === ZERO_ADDRESS
+        ) {
+          result.tokens = [];
+          return result;
+        }
+        if (
           typeof indexed?.tokenId !== "string" ||
           !/^[0-9]{1,78}$/.test(indexed?.tokenId ?? "") ||
           BigInt(indexed.tokenId) === 0n ||
@@ -134,7 +146,7 @@ export function createAdapter(config) {
               headers: { "content-type": "application/json" },
               body: JSON.stringify({
                 query:
-                  "query Token($id: ID!) { domain(id: $id) { id name tokenId owner { id } } _meta { hasIndexingErrors } }",
+                  "query Token($id: ID!) { domain(id: $id) { id name tokenId owner { id } wrappedOwner { id } } _meta { hasIndexingErrors } }",
                 variables: { id },
               }),
               signal,
