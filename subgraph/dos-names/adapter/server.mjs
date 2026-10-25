@@ -117,13 +117,20 @@ export function createAdapter(config) {
         return res.end();
       }
       active++;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10_000);
+      const disconnected = () => {
+        if (!res.writableFinished) controller.abort();
+      };
+      res.once("close", disconnected);
+      req.once("aborted", disconnected);
       try {
         if (!req.url?.startsWith("/") || req.url.startsWith("//"))
           throw new Error("Invalid path");
         const target = new URL(req.url, upstream);
         if (target.origin !== upstream.origin)
           throw new Error("Upstream origin mismatch");
-        const signal = AbortSignal.timeout(10_000);
+        const signal = controller.signal;
         const body = req.method === "POST" ? await readLimited(req) : undefined;
         const response = await fetch(target, {
           method: req.method,
@@ -184,6 +191,9 @@ export function createAdapter(config) {
         });
         res.end('{"message":"ENSv2 metadata is temporarily unavailable"}');
       } finally {
+        clearTimeout(timer);
+        res.off("close", disconnected);
+        req.off("aborted", disconnected);
         active--;
       }
     },

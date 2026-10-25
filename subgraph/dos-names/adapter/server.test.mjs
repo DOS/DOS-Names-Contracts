@@ -213,3 +213,49 @@ test("HTTP adapter fixes NFT metadata, strips credentials, and preserves status 
     405,
   );
 });
+
+test("client disconnect cancels in-flight upstream work before the deadline", async (t) => {
+  let markStarted, markClosed;
+  const started = new Promise((resolve) => {
+    markStarted = resolve;
+  });
+  const closed = new Promise((resolve) => {
+    markClosed = resolve;
+  });
+  const upstream = createServer((_req, res) => {
+    res.once("close", markClosed);
+    markStarted();
+  });
+  const upstreamUrl = await listen(upstream);
+  const adapter = createAdapter({
+    ...config,
+    upstreamUrl,
+    graphqlUrl: upstreamUrl,
+  });
+  const url = await listen(adapter);
+  t.after(async () => {
+    for (const server of [adapter, upstream]) {
+      server.closeAllConnections();
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+  const controller = new AbortController();
+  const response = fetch(`${url}/health`, { signal: controller.signal });
+  await started;
+  controller.abort();
+  await assert.rejects(response);
+  let timer;
+  try {
+    await Promise.race([
+      closed,
+      new Promise((_resolve, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("Upstream work was not cancelled")),
+          1000,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+});
